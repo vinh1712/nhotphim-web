@@ -5,7 +5,7 @@
 
    Các đường dẫn:
      (không có đuôi)                      Trang chủ
-     #/phim/<id>/<ten-phim>               Đang xem một phim
+     #phim/<id>/<ten-phim>/tap-<n>        Đang xem một phim (tập n)
      #/duyet-tim?loai=series&quoc-gia=kr&the-loai=action&nam=2025&sx=rating&trang=2
                                           Trang duyệt / lọc (mọi tham số đều tùy chọn)
      #/tim-kiem/<tu-khoa>?trang=2         Kết quả tìm kiếm
@@ -50,9 +50,10 @@
   function findMovie(idStr) {
     return (typeof MOVIES !== "undefined" ? MOVIES : []).find(function (x) { return String(x.id) === String(idStr); });
   }
+  // URL mới: #phim/414/ten-phim/tap-3 (không còn "/" sau dấu #). Link cũ #/phim/... vẫn đọc được.
   function currentRoute() {
-    var h = location.hash || "";
-    return h.indexOf("#/") === 0 ? h.slice(1) : "";
+    var h = (location.hash || "").replace(/^#\/*/, "");
+    return h ? "/" + h : "";
   }
   function parse(route) {
     var qi = route.indexOf("?");
@@ -68,14 +69,68 @@
     return { parts: path.split("/").filter(Boolean).map(dec), query: query };
   }
 
+  /* ---------- số tập (đọc / chọn tập) ---------- */
+  // Nếu dò sai, sửa tên biến / hàm của index.html vào 2 mảng dưới đây.
+  var EP_VARS = ["currentEp", "_currentEp", "curEp", "currentEpisode", "_currentEpisode", "epNum", "currentEpNum"];
+  var EP_FUNCS = ["playEpisode", "selectEpisode", "selectEp", "playEp", "openEpisode", "loadEpisode", "goEp"];
+  var EP_ACTIVE_SEL = ".ep-btn.active, .ep-item.active, .episode.active, .ep.active, .ep-list .active, [data-ep].active";
+  var pendingEp = null;
+
+  function getEp() {
+    for (var i = 0; i < EP_VARS.length; i++) {
+      var v = window[EP_VARS[i]];
+      if (typeof v === "number" && v > 0) return v;
+      if (typeof v === "string" && /^\d+$/.test(v) && +v > 0) return +v;
+    }
+    var el = document.querySelector("#detail-page " + EP_ACTIVE_SEL.split(",").join(", #detail-page "));
+    if (el) {
+      var d = el.getAttribute("data-ep") || el.textContent.trim();
+      var m = String(d).match(/(\d+)/);
+      if (m && +m[1] > 0) return +m[1];
+    }
+    return null;
+  }
+  function setEp(n) {
+    for (var i = 0; i < EP_FUNCS.length; i++) {
+      if (typeof window[EP_FUNCS[i]] === "function") { try { window[EP_FUNCS[i]](n); return true; } catch (e) {} }
+    }
+    var els = document.querySelectorAll("#detail-page [data-ep], #detail-page .ep-btn, #detail-page .ep-item, #detail-page .episode");
+    for (var j = 0; j < els.length; j++) {
+      var t = els[j].getAttribute("data-ep") || els[j].textContent.trim();
+      var m = String(t).match(/(\d+)/);
+      if (m && +m[1] === n) { els[j].click(); return true; }
+    }
+    return false;
+  }
+  function watchRoute(m, ep) {
+    return "/phim/" + encodeURIComponent(m.id) + "/" + slug(m.title) + (ep ? "/tap-" + ep : "");
+  }
+  function applyEpWhenReady(n, tries) {
+    if (!n) { pendingEp = null; return; }
+    tries = tries || 0;
+    if (setEp(n) || tries > 8) { setTimeout(function () { pendingEp = null; }, 800); return; }
+    setTimeout(function () { applyEpWhenReady(n, tries + 1); }, 500);
+  }
+  // Khi người xem đổi tập -> cập nhật URL (thay thế, không thêm lịch sử)
+  setInterval(function () {
+    if (booting || applying || pendingEp || !detailOpen()) return;
+    var m = findMovie(typeof _currentWatchMovieId !== "undefined" ? _currentWatchMovieId : null);
+    if (!m) return;
+    var ep = getEp(), route = watchRoute(m, ep);
+    if (currentRoute() !== route && currentRoute().indexOf("/phim/") === 0) {
+      navigate(route, "replace", { d: !!(history.state && history.state.d) });
+      try { document.title = (m.title || "") + (ep ? " - Tập " + ep : "") + " - " + baseTitle; } catch (e) {}
+    }
+  }, 700);
+
   /* ---------- ghi lịch sử trình duyệt ---------- */
   function setRoute(route, mode, extra) {
     route = route || "";
-    if (currentRoute() === route) return;
+    if (currentRoute() === route && (route || !location.hash)) return;
     var state = { np: route };
     if (extra && extra.d) state.d = 1;
     try {
-      var url = location.pathname + location.search + (route ? "#" + route : "");
+      var url = location.pathname + location.search + (route ? "#" + route.replace(/^\/+/, "") : "");
       if (mode === "push") history.pushState(state, "", url);
       else history.replaceState(state, "", url);
     } catch (e) { /* trình duyệt chặn history API -> bỏ qua, app vẫn chạy bình thường */ }
@@ -207,7 +262,7 @@
       expectId = null;
       return;
     }
-    var route = "/phim/" + encodeURIComponent(m.id) + "/" + slug(m.title);
+    var route = watchRoute(m, null);
     if (detailOpen()) navigate(route, "replace", { d: detailPushed });   // đổi phần / phim khác khi đang mở sẵn
     else { navigate(route, "push", { d: true }); detailPushed = true; }
   });
@@ -223,19 +278,24 @@
   });
 
   /* ---------- áp dụng URL lên giao diện ---------- */
-  function openDetailFromRoute(idStr, tries) {
+  function openDetailFromRoute(idStr, tries, ep) {
     var m = findMovie(idStr);
     if (m) {
-      if (detailOpen() && String(_currentWatchMovieId) === String(m.id)) return;
+      if (detailOpen() && String(_currentWatchMovieId) === String(m.id)) {
+        if (ep && getEp() !== ep) { pendingEp = ep; applyEpWhenReady(ep); }
+        return;
+      }
       expectId = m.id;
       expectPushed = !!(history.state && history.state.d);
       clearTimeout(expectTimer);
       expectTimer = setTimeout(function () { expectId = null; }, 10000);
+      pendingEp = ep || null;
       window.openPlayer(m.id);
+      if (ep) setTimeout(function () { applyEpWhenReady(ep); }, 400);
       return;
     }
     // Danh sách phim chưa có (đang dùng bản lưu cũ / mạng chậm): thử lại vài lần
-    if ((tries || 0) < 3) { setTimeout(function () { openDetailFromRoute(idStr, (tries || 0) + 1); }, 2500); return; }
+    if ((tries || 0) < 3) { setTimeout(function () { openDetailFromRoute(idStr, (tries || 0) + 1, ep); }, 2500); return; }
     setRoute("", "replace"); // không tìm thấy phim (đã xóa?) -> bỏ đuôi, ở lại trang chủ
   }
 
@@ -273,7 +333,11 @@
 
   function applyRoute(route) {
     var p = parse(route), parts = p.parts, head = parts[0] || "";
-    if (head === "phim" && parts[1]) { openDetailFromRoute(parts[1], 0); return; }
+    if (head === "phim" && parts[1]) {
+      var em = /^tap-(\d+)$/.exec(parts[3] || "");
+      openDetailFromRoute(parts[1], 0, em ? +em[1] : null);
+      return;
+    }
     applying++;
     try {
       if (detailOpen()) { detailPushed = false; expectId = null; window.closeDetail(); }
@@ -302,6 +366,7 @@
   function ready() {
     if (!booting) return;
     booting = false;
+    if (!currentRoute() && location.hash) setRoute("", "replace"); // "#" / "#/" thừa -> xóa
     try { applyRoute(currentRoute()); } catch (e) { console.error("[router] lỗi khôi phục URL:", e); }
   }
   var origInit = window.initApp;
