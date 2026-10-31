@@ -19,6 +19,29 @@
 (function () {
   "use strict";
 
+  /* ---------- lớp phủ chống nháy trang chủ khi F5 ở trang phim ---------- */
+  var bootCover = null;
+  function uncover() {
+    if (!bootCover) return;
+    var c = bootCover; bootCover = null;
+    try { c.style.opacity = "0"; setTimeout(function () { if (c.parentNode) c.parentNode.removeChild(c); }, 250); } catch (e) {}
+  }
+  function uncoverWhenOpen(tries) {
+    if (!bootCover) return;
+    if (shown("detail-page") || (tries || 0) > 60) { setTimeout(uncover, 300); return; }
+    setTimeout(function () { uncoverWhenOpen((tries || 0) + 1); }, 100);
+  }
+  if (/^#\/*phim\//.test(location.hash || "")) {
+    try {
+      bootCover = document.createElement("div");
+      bootCover.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#0d0d0d;color:#aaa;" +
+        "display:flex;align-items:center;justify-content:center;font:15px sans-serif;transition:opacity .25s";
+      bootCover.textContent = "Đang tải...";
+      document.documentElement.appendChild(bootCover);
+      setTimeout(uncover, 15000); // an toàn: tối đa 15 giây
+    } catch (e) { bootCover = null; }
+  }
+
   var baseTitle = document.title;
   var pageTitle = baseTitle;   // tiêu đề của trang nền (khi không mở phim)
   var booting = true;          // chưa khôi phục xong -> chưa được ghi đè URL
@@ -70,35 +93,28 @@
   }
 
   /* ---------- số tập (đọc / chọn tập) ---------- */
-  // Nếu dò sai, sửa tên biến / hàm của index.html vào 2 mảng dưới đây.
-  var EP_VARS = ["currentEp", "_currentEp", "curEp", "currentEpisode", "_currentEpisode", "epNum", "currentEpNum"];
-  var EP_FUNCS = ["playEpisode", "selectEpisode", "selectEp", "playEp", "openEpisode", "loadEpisode", "goEp"];
-  var EP_ACTIVE_SEL = ".ep-btn.active, .ep-item.active, .episode.active, .ep.active, .ep-list .active, [data-ep].active";
   var pendingEp = null;
 
+  // Tập đang xem: app lưu chỉ số (từ 0) ở window._seriesCurrentEpIndex -> số tập = chỉ số + 1
   function getEp() {
-    for (var i = 0; i < EP_VARS.length; i++) {
-      var v = window[EP_VARS[i]];
-      if (typeof v === "number" && v > 0) return v;
-      if (typeof v === "string" && /^\d+$/.test(v) && +v > 0) return +v;
-    }
-    var el = document.querySelector("#detail-page " + EP_ACTIVE_SEL.split(",").join(", #detail-page "));
-    if (el) {
-      var d = el.getAttribute("data-ep") || el.textContent.trim();
-      var m = String(d).match(/(\d+)/);
-      if (m && +m[1] > 0) return +m[1];
-    }
-    return null;
+    var m = findMovie(typeof _currentWatchMovieId !== "undefined" ? _currentWatchMovieId : null);
+    if (!m || m.type !== "series") return null;
+    var i = window._seriesCurrentEpIndex;
+    return (typeof i === "number" && i >= 0) ? i + 1 : null;
   }
+  // Chuyển tới tập n bằng playEpisode(kind, idx) của app. Trả về true nếu thành công.
   function setEp(n) {
-    for (var i = 0; i < EP_FUNCS.length; i++) {
-      if (typeof window[EP_FUNCS[i]] === "function") { try { window[EP_FUNCS[i]](n); return true; } catch (e) {} }
-    }
-    var els = document.querySelectorAll("#detail-page [data-ep], #detail-page .ep-btn, #detail-page .ep-item, #detail-page .episode");
-    for (var j = 0; j < els.length; j++) {
-      var t = els[j].getAttribute("data-ep") || els[j].textContent.trim();
-      var m = String(t).match(/(\d+)/);
-      if (m && +m[1] === n) { els[j].click(); return true; }
+    if (typeof playEpisode !== "function" || typeof EP_KINDS === "undefined") return false;
+    var idx = n - 1, kinds = Object.keys(EP_KINDS), order = [];
+    // ưu tiên server đang hiển thị
+    var vis = document.querySelector('#dp-episodes [id^="ep-list-"]:not([style*="display: none"])');
+    if (vis) { var k0 = vis.id.replace("ep-list-", ""); if (EP_KINDS[k0]) order.push(k0); }
+    kinds.forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
+    for (var i = 0; i < order.length; i++) {
+      var k = EP_KINDS[order[i]], arr = (k.arr && k.arr()) || [];
+      if (arr[idx] && arr[idx][k.field]) {
+        try { if (playEpisode(order[i], idx)) return true; } catch (e) {}
+      }
     }
     return false;
   }
@@ -108,7 +124,7 @@
   function applyEpWhenReady(n, tries) {
     if (!n) { pendingEp = null; return; }
     tries = tries || 0;
-    if (setEp(n) || tries > 8) { setTimeout(function () { pendingEp = null; }, 800); return; }
+    if (getEp() === n || setEp(n) || tries > 20) { setTimeout(function () { pendingEp = null; }, 800); return; }
     setTimeout(function () { applyEpWhenReady(n, tries + 1); }, 500);
   }
   // Khi người xem đổi tập -> cập nhật URL (thay thế, không thêm lịch sử)
@@ -291,11 +307,13 @@
       expectTimer = setTimeout(function () { expectId = null; }, 10000);
       pendingEp = ep || null;
       window.openPlayer(m.id);
+      uncoverWhenOpen(0);
       if (ep) setTimeout(function () { applyEpWhenReady(ep); }, 400);
       return;
     }
     // Danh sách phim chưa có (đang dùng bản lưu cũ / mạng chậm): thử lại vài lần
     if ((tries || 0) < 3) { setTimeout(function () { openDetailFromRoute(idStr, (tries || 0) + 1, ep); }, 2500); return; }
+    uncover();
     setRoute("", "replace"); // không tìm thấy phim (đã xóa?) -> bỏ đuôi, ở lại trang chủ
   }
 
@@ -367,7 +385,8 @@
     if (!booting) return;
     booting = false;
     if (!currentRoute() && location.hash) setRoute("", "replace"); // "#" / "#/" thừa -> xóa
-    try { applyRoute(currentRoute()); } catch (e) { console.error("[router] lỗi khôi phục URL:", e); }
+    try { applyRoute(currentRoute()); } catch (e) { console.error("[router] lỗi khôi phục URL:", e); uncover(); }
+    if (currentRoute().indexOf("/phim/") !== 0) uncover();
   }
   var origInit = window.initApp;
   if (typeof origInit === "function") {
