@@ -1,8 +1,7 @@
 <!doctype html>
 <html lang="vi">
   <head>
-    <style id="np-boot-style">html.np-boot-phim::after{content:'Đang tải...';position:fixed;inset:0;z-index:2147483647;background:#0d0d0d;color:#aaa;display:flex;align-items:center;justify-content:center;font:15px sans-serif}</style>
-    <script>/* F5 ở trang phim (#phim/...): che trang chủ ngay từ khung hình đầu, router.js sẽ gỡ khi phim mở xong */if(/^#\/*phim\//.test(location.hash)){document.documentElement.classList.add("np-boot-phim");setTimeout(function(){document.documentElement.classList.remove("np-boot-phim")},15000)}</script>
+    <script>/* F5 ở trang phim (#phim/...): giữ màn hình tải của app cho tới khi phim mở xong (router.js sẽ nhả) */window.__npHold=false;if(/^#\/*phim\//.test(location.hash)){window.__npHold=true;window.__npRelease=function(){if(!window.__npHold)return;window.__npHold=false;if(typeof hideLoadingScreen==="function")hideLoadingScreen();};setTimeout(function(){window.__npRelease&&window.__npRelease()},15000);}</script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0,interactive-widget=resizes-content,viewport-fit=cover" />
     <!-- Thêm vào Màn hình chính (iPhone/Android): tên + biểu tượng -->
@@ -6262,6 +6261,7 @@
       }
       // Ẩn loading screen (bản cũ)
       function hideLoadingScreen() {
+        if (window.__npHold) return; // đang khôi phục trang phim: giữ màn tải tới khi router nhả
         const ls = document.getElementById("loading-screen");
         if (ls) {
           ls.style.pointerEvents = "none";
@@ -6788,6 +6788,6 @@
       // ===== END MOBILE KEYBOARD JUMP FIX =====
 
 </script>
-    <script src="router.js?v=3"></script>
+    <script src="router.js?v=5"></script>
   </body>
 </html>
