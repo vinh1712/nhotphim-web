@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Xem Phim Tĩnh</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #141414; color: #fff; margin: 0; padding: 20px; }
+        h1 { text-align: center; color: #e50914; }
+        .grid { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px; }
+        .card { background: #222; padding: 15px; border-radius: 8px; cursor: pointer; text-align: center; width: 200px; }
+        .card:hover { background: #333; }
+        .card img { width: 100%; border-radius: 5px; }
+        #player-container { max-width: 800px; margin: 0 auto; display: none; text-align: center; }
+        iframe { width: 100%; height: 450px; border: none; border-radius: 8px; }
+        .btn-back { background: #e50914; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <h1>KHO PHIM MIỄN PHÍ</h1>
+
+    <!-- Danh sách phim -->
+    <div id="movie-list" class="grid"></div>
+
+    <!-- Khung phát phim -->
+    <div id="player-container">
+        <h2 id="movie-title"></h2>
+        <iframe id="video-player" src="" allowfullscreen></iframe>
+        <br>
+        <button class="btn-back" onclick="goHome()">← Quay lại danh sách</button>
+    </div>
+
+    <script>
+        // 1. Dữ liệu danh sách phim (Bạn có thể thay link embed/m3u8 của bạn vào đây)
+        const movies = [
+            { id: "phim-1", title: "Phim Hành Động A", embed: "https://www.youtube.com/embed/dQw4w9WgXcQ", thumb: "https://via.placeholder.com/200x280?text=Phim+1" },
+            { id: "phim-2", title: "Phim Hoạt Hình B", embed: "https://www.youtube.com/embed/dQw4w9WgXcQ", thumb: "https://via.placeholder.com/200x280?text=Phim+2" },
+            { id: "phim-3", title: "Phim Viễn Tưởng C", embed: "https://www.youtube.com/embed/dQw4w9WgXcQ", thumb: "https://via.placeholder.com/200x280?text=Phim+3" }
+        ];
+
+        // 2. Hiển thị danh sách phim ra màn hình
+        function renderMovieList() {
+            const listEl = document.getElementById("movie-list");
+            listEl.innerHTML = movies.map(m => `
+                <div class="card" onclick="openMovie('${m.id}')">
+                    <img src="${m.thumb}" alt="${m.title}">
+                    <h3>${m.title}</h3>
+                </div>
+            `).join('');
+        }
+
+        // 3. Mở xem phim và ĐỔI URL (Thêm ?id=...)
+        function openMovie(id) {
+            const movie = movies.find(m => m.id === id);
+            if (!movie) return;
+
+            // Cập nhật thanh địa chỉ mà KHÔNG load lại trang
+            const newUrl = window.location.pathname + '?id=' + id;
+            window.history.pushState({ path: newUrl }, '', newUrl);
+
+            // Hiển thị khung video
+            document.getElementById("movie-list").style.display = "none";
+            document.getElementById("player-container").style.display = "block";
+            document.getElementById("movie-title").innerText = movie.title;
+            document.getElementById("video-player").src = movie.embed;
+        }
+
+        // 4. Quay lại trang chủ
+        function goHome() {
+            // Xóa tham số ?id= trên URL
+            window.history.pushState({}, '', window.location.pathname);
+
+            document.getElementById("player-container").style.display = "none";
+            document.getElementById("video-player").src = "";
+            document.getElementById("movie-list").style.display = "flex";
+        }
+
+        // 5. Xử lý khi F5 HOẶC khi tải lại trang
+        window.addEventListener("DOMContentLoaded", () => {
+            renderMovieList();
+
+            // Đọc tham số `?id=` trên URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const movieId = urlParams.get('id');
+
+            // Nếu URL có chứa id phim thì phát luôn phim đó
+            if (movieId) {
+                openMovie(movieId);
+            }
+        });
+    </script>
+</body>
+</html>
