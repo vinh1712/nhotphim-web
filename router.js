@@ -19,27 +19,28 @@
 (function () {
   "use strict";
 
-  /* ---------- lớp phủ chống nháy trang chủ khi F5 ở trang phim ---------- */
-  var bootCover = null;
-  function uncover() {
-    if (!bootCover) return;
-    var c = bootCover; bootCover = null;
-    try { c.style.opacity = "0"; setTimeout(function () { if (c.parentNode) c.parentNode.removeChild(c); }, 250); } catch (e) {}
-  }
+  /* ---------- lớp phủ chống nháy trang chủ khi F5 ở trang phim ----------
+     index.html có đoạn script nhỏ trong <head> bật class "np-boot-phim" ngay từ khung hình đầu.
+     Nếu index.html chưa có đoạn đó, router tự bật (muộn hơn một chút). */
+  var ROOT = document.documentElement;
+  function uncover() { try { ROOT.classList.remove("np-boot-phim"); } catch (e) {} }
   function uncoverWhenOpen(tries) {
-    if (!bootCover) return;
+    if (!ROOT.classList.contains("np-boot-phim")) return;
     if (shown("detail-page") || (tries || 0) > 60) { setTimeout(uncover, 300); return; }
     setTimeout(function () { uncoverWhenOpen((tries || 0) + 1); }, 100);
   }
   if (/^#\/*phim\//.test(location.hash || "")) {
     try {
-      bootCover = document.createElement("div");
-      bootCover.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#0d0d0d;color:#aaa;" +
-        "display:flex;align-items:center;justify-content:center;font:15px sans-serif;transition:opacity .25s";
-      bootCover.textContent = "Đang tải...";
-      document.documentElement.appendChild(bootCover);
+      if (!document.getElementById("np-boot-style")) {
+        var st = document.createElement("style");
+        st.id = "np-boot-style";
+        st.textContent = "html.np-boot-phim::after{content:'Đang tải...';position:fixed;inset:0;z-index:2147483647;" +
+          "background:#0d0d0d;color:#aaa;display:flex;align-items:center;justify-content:center;font:15px sans-serif}";
+        document.head.appendChild(st);
+      }
+      ROOT.classList.add("np-boot-phim");
       setTimeout(uncover, 15000); // an toàn: tối đa 15 giây
-    } catch (e) { bootCover = null; }
+    } catch (e) {}
   }
 
   var baseTitle = document.title;

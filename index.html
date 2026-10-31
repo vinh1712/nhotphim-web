@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="vi">
   <head>
+    <style id="np-boot-style">html.np-boot-phim::after{content:'Đang tải...';position:fixed;inset:0;z-index:2147483647;background:#0d0d0d;color:#aaa;display:flex;align-items:center;justify-content:center;font:15px sans-serif}</style>
+    <script>/* F5 ở trang phim (#phim/...): che trang chủ ngay từ khung hình đầu, router.js sẽ gỡ khi phim mở xong */if(/^#\/*phim\//.test(location.hash)){document.documentElement.classList.add("np-boot-phim");setTimeout(function(){document.documentElement.classList.remove("np-boot-phim")},15000)}</script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0,interactive-widget=resizes-content,viewport-fit=cover" />
     <!-- Thêm vào Màn hình chính (iPhone/Android): tên + biểu tượng -->
@@ -6786,6 +6788,6 @@
       // ===== END MOBILE KEYBOARD JUMP FIX =====
 
 </script>
-    <script src="router.js"></script>
+    <script src="router.js?v=3"></script>
   </body>
 </html>
