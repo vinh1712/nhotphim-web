@@ -61,19 +61,45 @@
   function findMovie(idStr) {
     return (typeof MOVIES !== "undefined" ? MOVIES : []).find(function (x) { return String(x.id) === String(idStr); });
   }
-  // Tên phim trên URL: slug của tên; nếu trùng tên với phim khác thì thêm năm, vẫn trùng thì thêm id
+  // Tên phim trên URL: slug của tên; nếu trùng tên với phim khác thì thêm năm, vẫn trùng thì thêm id.
+  // Dựng bảng tra 1 lần cho cả danh sách (trước đây mỗi lần tìm lại slug() toàn bộ danh sách -> chậm theo bình phương
+  // khi có nhiều phim, nút Back/Forward vào trang phim bị đơ).
+  var slugIdx = null;
+  function slugIndex(force) {
+    var all = typeof MOVIES !== "undefined" ? MOVIES : [];
+    if (!force && slugIdx && slugIdx.ref === all && slugIdx.n === all.length) return slugIdx;
+    var raw = new Array(all.length), cnt = Object.create(null), cntY = Object.create(null), i, s, k, m, r;
+    for (i = 0; i < all.length; i++) {
+      s = slug(all[i].title); raw[i] = s;
+      if (s) {
+        cnt[s] = (cnt[s] || 0) + 1;
+        k = s + "\u0000" + typeof all[i].year + all[i].year;
+        cntY[k] = (cntY[k] || 0) + 1;
+      }
+    }
+    var out = { ref: all, n: all.length, byId: Object.create(null), bySlug: Object.create(null) };
+    for (i = 0; i < all.length; i++) {
+      m = all[i]; s = raw[i];
+      if (!s) r = String(m.id);
+      else if (cnt[s] <= 1) r = s;
+      else if (m.year && cntY[s + "\u0000" + typeof m.year + m.year] <= 1) r = s + "-" + m.year;
+      else r = s + (m.year ? "-" + m.year : "") + "-" + m.id;
+      out.byId[m.id] = r;
+      if (!(r in out.bySlug)) out.bySlug[r] = m;
+    }
+    slugIdx = out;
+    return out;
+  }
   function movieSlug(m) {
-    var all = typeof MOVIES !== "undefined" ? MOVIES : [], s = slug(m.title) || String(m.id);
-    var same = all.filter(function (x) { return slug(x.title) === s; });
-    if (same.length <= 1) return s;
-    var sy = m.year ? s + "-" + m.year : s;
-    if (m.year && all.filter(function (x) { return x.year === m.year && slug(x.title) === s; }).length <= 1) return sy;
-    return sy + "-" + m.id;
+    var ix = slugIndex(), r = ix.byId[m.id];
+    if (r === undefined) { ix = slugIndex(true); r = ix.byId[m.id]; }
+    return r !== undefined ? r : (slug(m.title) || String(m.id));
   }
   // Tìm phim theo tên trên URL (link cũ dùng id số vẫn đọc được)
   function findMovieBySlug(sl) {
-    var all = typeof MOVIES !== "undefined" ? MOVIES : [];
-    return all.find(function (x) { return movieSlug(x) === sl; }) || findMovie(sl);
+    var ix = slugIndex(), m = ix.bySlug[sl];
+    if (!m) { ix = slugIndex(true); m = ix.bySlug[sl]; }
+    return m || findMovie(sl);
   }
   // URL: #/phim/ten-phim/tap-3/sv1, #/duyet-tim, #/tai-khoan... Link cũ không có "/" sau # (#phim/...) vẫn đọc được.
   function currentRoute() {
