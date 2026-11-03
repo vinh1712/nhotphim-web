@@ -75,7 +75,7 @@
     var all = typeof MOVIES !== "undefined" ? MOVIES : [];
     return all.find(function (x) { return movieSlug(x) === sl; }) || findMovie(sl);
   }
-  // URL mới: #phim/ten-phim/tap-3/sv1 (không còn "/" sau dấu #). Link cũ #/phim/... vẫn đọc được.
+  // URL: #/phim/ten-phim/tap-3/sv1, #/duyet-tim, #/tai-khoan... Link cũ không có "/" sau # (#phim/...) vẫn đọc được.
   function currentRoute() {
     var h = (location.hash || "").replace(/^#\/*/, "");
     return h ? "/" + h : "";
@@ -177,7 +177,7 @@
     var state = { np: route };
     if (extra && extra.d) state.d = 1;
     try {
-      var url = location.pathname + location.search + (route ? "#" + route.replace(/^\/+/, "") : "");
+      var url = location.pathname + location.search + (route ? "#" + route : "");
       if (mode === "push") history.pushState(state, "", url);
       else history.replaceState(state, "", url);
     } catch (e) { /* trình duyệt chặn history API -> bỏ qua, app vẫn chạy bình thường */ }
