@@ -1,7 +1,6 @@
 <!doctype html>
 <html lang="vi">
   <head>
-    <script>/* F5 ở trang phim (#phim/...): giữ màn hình tải của app cho tới khi phim mở xong (router.js sẽ nhả) */window.__npHold=false;if(/^#\/*phim\//.test(location.hash)){window.__npHold=true;window.__npRelease=function(){if(!window.__npHold)return;window.__npHold=false;if(typeof hideLoadingScreen==="function")hideLoadingScreen();};setTimeout(function(){window.__npRelease&&window.__npRelease()},15000);}</script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0,interactive-widget=resizes-content,viewport-fit=cover" />
     <!-- Thêm vào Màn hình chính (iPhone/Android): tên + biểu tượng -->
@@ -37,6 +36,21 @@
       })();
     </script>
     <link rel="preconnect" href="https://tlbumpjugtltznzuwqwt.supabase.co" crossorigin />
+    <script>
+      /* Tải sớm ảnh hero của lần xem trước (chạy trước cả khi JS chính khởi động) */
+      (function () {
+        try {
+          var o = JSON.parse(localStorage.getItem("np_hero_pre_v1") || "null");
+          if (!o) return;
+          var mobile = window.matchMedia && matchMedia("(max-width: 768px)").matches;
+          var u = mobile ? o.m : o.d;
+          if (!u || u.indexOf("http") !== 0) return;
+          var l = document.createElement("link");
+          l.rel = "preload"; l.as = "image"; l.href = u; l.fetchPriority = "high";
+          document.head.appendChild(l);
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1020,7 +1034,6 @@
         inset: 0;
         background-size: cover;
         background-position: center top;
-        transition: background-image 0.5s ease;
         z-index: 1;
         backface-visibility: hidden;
         image-rendering: -webkit-optimize-contrast;
@@ -1037,6 +1050,19 @@
         transition: background-image 0.5s ease;
         z-index: 0;
         display: none;
+      }
+      /* Lớp ảnh cũ nằm dưới, ảnh mới mờ dần hiện lên trên -> cross-fade thật sự mượt trên mọi trình duyệt */
+      .hero.drag-ready { cursor: grab; touch-action: pan-y; }
+      .hero.dragging { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+      .hero.dragging img { pointer-events: none; }
+      .hero-bg-old { opacity: 0; pointer-events: none; }
+      .hero-bg-old.show { opacity: 1; }
+      .hero-bg.fade-in { animation: heroBgIn 0.8s cubic-bezier(.4,0,.2,1) backwards; }
+      @keyframes heroBgIn { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: scale(1); } }
+      .hero-content.hero-swap { animation: heroContentIn 0.7s cubic-bezier(.22,.61,.36,1) backwards; }
+      @keyframes heroContentIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+      @media (prefers-reduced-motion: reduce) {
+        .hero-bg.fade-in, .hero-content.hero-swap { animation: none; }
       }
       .hero-bg.is-portrait {
         background-size: contain;
@@ -1129,9 +1155,10 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      @keyframes heroLogoIn { from { opacity: 0; } to { opacity: 1; } }
       .hero-title-logo {
-        max-width: min(100%, 380px);
-        max-height: 130px;
+        max-width: min(570px, 90vw);
+        max-height: 195px;
         object-fit: contain;
         object-position: left center;
         display: block;
@@ -1267,45 +1294,50 @@
       @media (min-width: 901px) {
         .hero-dots { display: none; }
       }
-      /* Thumbnail strip */
+      /* Thumbnail strip kiểu ChợPhim: "cửa sổ" cắt ngang (mép cắt cứng, lộ một mảnh thumb ở hai đầu),
+         dải thumb trượt mượt qua cửa sổ; thumb đang chọn to hơn + viền, thumb càng xa càng mờ. */
       .hero-thumbs {
         position: absolute;
         right: 24px;
-        bottom: 36px;
-        display: flex;
-        gap: 8px;
+        bottom: 34px;
+        width: 436px;
+        height: 56px;
+        overflow: hidden;
         z-index: 10;
-        align-items: flex-end;
       }
       .hero-thumb {
-        width: 96px;
-        height: 60px;
-        border-radius: 7px;
+        --o: 0;
+        position: absolute;
+        left: 184px;           /* vị trí thumb đang chọn trong cửa sổ (thứ 3 từ trái) */
+        top: 9px;
+        width: 68px;
+        height: 38px;
+        box-sizing: border-box;
+        border-radius: 6px;
         overflow: hidden;
         cursor: pointer;
         border: 2px solid transparent;
-        transition: all 0.35s cubic-bezier(.22,.9,.34,1);
-        flex-shrink: 0;
         background: var(--card);
+        transform: translate3d(calc(var(--o) * 80px), 0, 0) scale(1);
+        transition: transform 0.55s cubic-bezier(.22,.9,.34,1), opacity 0.4s, filter 0.4s, border-color 0.3s;
+        will-change: transform;
       }
       .hero-thumb img {
         width: 100%; height: 100%;
         object-fit: cover;
         display: block;
         backface-visibility: hidden;
-        image-rendering: -webkit-optimize-contrast;
       }
+      .hero-thumb[data-d="1"] { opacity: 0.8; filter: brightness(0.8); }
+      .hero-thumb[data-d="2"] { opacity: 0.55; filter: brightness(0.6); }
+      .hero-thumb[data-d="3"] { opacity: 0.28; filter: brightness(0.45); }
+      .hero-thumb[data-d="4"] { opacity: 0; pointer-events: none; }
+      .hero-thumb[data-d="1"]:hover, .hero-thumb[data-d="2"]:hover { opacity: 1; filter: brightness(1); }
       .hero-thumb.active {
+        opacity: 1; filter: none; z-index: 2;
         border-color: var(--accent);
-        box-shadow: 0 0 0 1px var(--accent);
-      }
-      .hero-thumb:not(.active) {
-        opacity: 0.5;
-        filter: brightness(0.65);
-      }
-      .hero-thumb:not(.active):hover {
-        opacity: 0.8;
-        filter: brightness(0.85);
+        transform: translate3d(calc(var(--o) * 80px), 0, 0) scale(1.12);
+        box-shadow: 0 6px 18px rgba(0,0,0,0.55);
       }
       @media (max-width: 900px) {
         .hero-thumbs { display: none; }
@@ -1315,7 +1347,6 @@
         .hero-dots { display: flex; right: 16px; bottom: 28px; left: auto; }
         .hero { height: 100vh; min-height: 460px; }
         .hero-title { font-size: 26px; line-height: 1.2; }
-        .hero-genre-pills { display: none; }
         .hero-desc { margin-bottom: 16px; }
         .hero-grad {
           background: linear-gradient(
@@ -1343,23 +1374,25 @@
         }
       }
       /* ===== MOBILE HERO ===== */
-      @media (max-width: 600px) {
+      @media (max-width: 900px) and (min-height: 501px) {
         .hero { display: none !important; }
         #mobile-hero { display: block !important; }
       }
-      @media (min-width: 601px) {
+      @media (min-width: 901px), (max-height: 500px) {
         #mobile-hero { display: none !important; }
       }
       /* Landscape phone: chiều cao màn hình mỗi máy khác nhau -> bỏ min-height cứng,
          chỉ dùng 100vh để hero luôn khớp đúng viewport, tránh bị lệch/che nút giữa các máy */
       @media (orientation: landscape) and (max-height: 500px) {
         .hero { height: 100vh; min-height: 0 !important; }
-        .hero-content { bottom: 12px; left: 24px; right: 24px; max-width: 60%; }
+        /* Khối thông tin chỉ rộng tối đa 1/2 chiều ngang màn hình */
+        .hero-content { bottom: 12px; left: 24px; right: auto; width: calc(50% - 24px); max-width: calc(50% - 24px); }
         .hero-badges { margin-bottom: 6px; }
         .hero-title-en { font-size: 10px; margin-bottom: 3px; }
         .hero-title { font-size: 20px; margin-bottom: 6px; line-height: 1.15; }
-        .hero-genre-pills { display: none; }
-        .hero-desc { display: none !important; }
+        .hero-genre-pills { margin-bottom: 6px; gap: 4px; }
+        .hero-genre-pill { font-size: 10px; padding: 2px 8px; }
+        .hero-desc { font-size: 11.5px; line-height: 1.5; margin-bottom: 8px; -webkit-line-clamp: 2; }
         .hero-btns { gap: 8px; }
         .btn-watch { padding: 8px 18px; font-size: 12px; }
         .btn-icon-action { width: 32px; height: 32px; font-size: 13px; }
@@ -1404,7 +1437,7 @@
       .mhero-dot.active { background: var(--accent); width: 28px; }
       .mhero-info { padding: 14px 14px 12px; border-bottom: 1px solid var(--border); }
       .mhero-title-en { font-size: 11px; color: var(--accent); font-weight: 600; letter-spacing: 0.3px; margin-bottom: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .mhero-title-logo { max-width: 100%; max-height: 80px; object-fit: contain; object-position: left center; display: block; margin-bottom: 10px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
+      .mhero-title-logo { max-width: 100%; max-height: 120px; object-fit: contain; object-position: left center; display: block; margin-bottom: 10px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
       .mhero-title { font-size: 22px; font-weight: 800; line-height: 1.2; margin-bottom: 6px; letter-spacing: -0.3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 53px; }
       .mhero-btns { display: flex; gap: 10px; margin-bottom: 14px; }
       .mhero-btn-watch {
@@ -1420,6 +1453,207 @@
       }
       .mhero-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
       .mhero-desc { font-size: 12.5px; line-height: 1.7; color: rgba(232,232,232,0.6); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+      /* ===== COVERFLOW HERO (kiểu chophim) ===== */
+      #mobile-hero { position: relative; overflow: hidden; padding-bottom: 8px; }
+      .mhero-bg {
+        position: absolute; left: 0; right: 0; top: 0; height: 75%;
+        background-size: cover; background-position: center top;
+        filter: blur(38px) saturate(1.3); transform: scale(1.35);
+        opacity: 0.32; pointer-events: none;
+        transition: background-image 0.4s;
+        -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
+                mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
+      }
+      .mhero-bg::after {
+        content: ""; position: absolute; inset: 0;
+        background: radial-gradient(circle at 50% 30%, rgba(254,207,89,0.1), transparent 60%);
+      }
+      .mhero-strip {
+        display: block; position: relative; z-index: 1;
+        --cw: min(54vw, 210px);
+        height: calc(var(--cw) * 1.5 + 28px);
+        margin-top: 10px; padding: 0; gap: 0;
+        overflow: visible; perspective: 1100px;
+        touch-action: pan-y; user-select: none; -webkit-user-select: none;
+      }
+      .mhero-poster {
+        position: absolute; left: 50%; top: 14px;
+        width: var(--cw); max-width: none; flex: none;
+        aspect-ratio: 2/3; border-radius: 16px; border: 2px solid transparent;
+        --o: 0; --ao: 0;
+        transform:
+          translateX(calc(-50% + var(--o) * 88%))
+          rotateY(calc(var(--o) * -28deg))
+          scale(calc(1 - var(--ao) * 0.25));
+        z-index: calc(10 - var(--ao));
+        transition: transform 0.55s cubic-bezier(.22,.9,.34,1), opacity 0.45s, filter 0.45s, border-color 0.3s, box-shadow 0.45s;
+        will-change: transform, opacity;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+      }
+      .mhero-poster[data-d="0"] { border-color: #fff; box-shadow: 0 18px 44px rgba(0,0,0,0.65); }
+      .mhero-poster[data-d="1"] { opacity: 0.8;  filter: brightness(0.55) saturate(0.85); }
+      .mhero-poster[data-d="2"] { opacity: 0.6; filter: brightness(0.45) saturate(0.8) blur(1.5px); }
+      .mhero-poster[data-d="far"] { opacity: 0; pointer-events: none; }
+      .mhero-poster.active { border-color: #fff; box-shadow: 0 18px 44px rgba(0,0,0,0.65); }
+      .mhero-poster img { -webkit-user-drag: none; pointer-events: none; }
+      .mhero-info {
+        position: relative; z-index: 2;
+        display: flex; flex-direction: column; align-items: center;
+        text-align: center; padding: 20px 20px 0; border-bottom: none;
+        width: 100%; max-width: 380px; margin: 0 auto;
+      }
+      .mhero-info.mh-anim { animation: mhFadeUp 0.5s cubic-bezier(.22,.9,.34,1); }
+      @keyframes mhFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+      .mhero-title-logo { order: 0; margin: 0 auto 10px; object-position: center; }
+      /* font-bold leading-[1.35] tracking-[-0.025em] drop-shadow-md, cỡ clamp(1.375rem,6vw,1.5rem) */
+      .mhero-title {
+        order: 1; width: 100%; max-width: 340px; min-height: 0; margin: 0;
+        padding: 4px 0 2px; text-align: center; color: #fff;
+        font-size: clamp(1.375rem, 6vw, 1.5rem); font-weight: 700;
+        line-height: 1.35; letter-spacing: -0.025em; text-shadow: none;
+        filter: drop-shadow(0 4px 3px rgba(0,0,0,0.07)) drop-shadow(0 2px 2px rgba(0,0,0,0.06));
+      }
+      .mhero-title-en {
+        order: 2; max-width: 330px; margin: 4px 0 0;
+        font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.55); text-align: center;
+      }
+      .mhero-btns { order: 3; width: 100%; max-width: 340px; margin: 16px 0 0; gap: 12px; justify-content: center; }
+      .mhero-btn-watch, .mhero-btn-info {
+        flex: 1 1 0; padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 700;
+      }
+      .mhero-btn-watch { background: linear-gradient(180deg, #ffd873, var(--accent)); box-shadow: 0 6px 20px rgba(245,166,35,0.3); }
+      .mhero-btn-info { background: #fff; color: #111; border: none; }
+      .mhero-badges { order: 4; margin: 16px 0 0; gap: 6px; justify-content: center; }
+      .mhero-badges .hbadge {
+        background: rgba(0,0,0,0.45); color: #fff; border: 1px solid rgba(255,255,255,0.25);
+        border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 600;
+      }
+      .mhero-desc {
+        order: 5; max-width: 350px; margin-top: 12px; text-align: center;
+        font-size: 12px; line-height: 1.65; color: rgba(255,255,255,0.68);
+      }
+      .mhero-dots { position: relative; z-index: 2; flex-wrap: wrap; gap: 6px; padding: 12px 20px 6px; }
+      .mhero-dot { width: 8px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.3); }
+      .mhero-dot.active { width: 24px; background: var(--accent); }
+      body.mh-resizing .mhero-poster, body.mh-resizing .mhero-info.mh-anim { transition: none !important; animation: none !important; }
+      @media (prefers-reduced-motion: reduce) {
+        .mhero-poster, .mhero-info.mh-anim { transition: none; animation: none; }
+      }
+      /* ===== END COVERFLOW HERO ===== */
+      /* ===== 3 NÚT PILL (Đề xuất / Phim Bộ / Phim Lẻ) — thay hàng nav trên điện thoại ===== */
+      .mpills { display: none; }
+      @media (max-width: 900px) and (min-height: 501px) {
+        .nav { display: none !important; }
+        body #page-browse { margin-top: var(--hdr-h, 56px) !important; }
+        .mpills {
+          display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+          position: relative; z-index: 3;
+          width: 100%; max-width: 520px; margin: 30px auto 18px; padding: 0 16px;
+        }
+        #page-browse .mpills { padding: 30px 0 0; margin: 0 0 4px; max-width: none; }
+      }
+      .mpill {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-height: 36px; padding: 0 16px; border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 700; cursor: pointer;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+        -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+        transition: background .2s, border-color .2s, color .2s; -webkit-tap-highlight-color: transparent;
+      }
+      .mpill.active { background: #fff; border-color: #fff; color: #171a26; }
+
+      /* ===== MENU 3 GẠCH (điện thoại đứng + xoay ngang) — thay hàng nav ===== */
+      .mh-burger, .mh-menu, .mh-menu-ov { display: none; }
+      @media (max-width: 900px) and (min-height: 501px), (orientation: landscape) and (max-height: 500px) {
+        .nav { display: none !important; }
+        body #page-browse { margin-top: var(--hdr-h, 56px) !important; }
+        .mh-burger {
+          display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+          width: 38px; height: 38px; margin-left: -8px; padding: 0; border: 0; border-radius: 10px;
+          background: transparent; color: rgba(255,255,255,0.92); cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .mh-burger svg { width: 24px; height: 24px; }
+        /* Đã có menu 3 gạch (có thẻ người dùng bên trong) -> ẩn avatar ngoài header */
+        .user-menu { display: none !important; }
+        .mh-burger .ic-close { display: none; }
+        .mh-burger.open { color: #ff6b6b; }
+        .mh-burger.open .ic-open { display: none; }
+        .mh-burger.open .ic-close { display: block; }
+        .header-top.mh-open { background: rgba(13,13,13,0.96) !important; }
+        .mh-menu-ov.open { display: block; position: fixed; left: 0; right: 0; bottom: 0; top: var(--hdr-h, 56px); z-index: 280; background: rgba(0,0,0,0.35); }
+        .mh-menu.open {
+          display: block; position: fixed; z-index: 290;
+          left: 16px; top: calc(var(--hdr-h, 56px) + 8px);
+          width: calc(100% - 32px); max-width: 384px;
+          max-height: 50vh;
+          max-height: 50dvh;
+          overflow-y: auto; -webkit-overflow-scrolling: touch;
+          background: #3b4987; border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 16px; padding: 16px;
+          box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+          animation: mhFadeUp 0.25s cubic-bezier(.22,.9,.34,1);
+        }
+      }
+      @media (orientation: landscape) and (max-height: 500px) {
+        .mh-menu.open {
+          left: 0; top: var(--hdr-h, 56px);
+          width: 50vw; max-width: none;
+          height: calc(100vh - var(--hdr-h, 56px));
+          height: calc(100dvh - var(--hdr-h, 56px));
+          max-height: none;
+          border-radius: 0 16px 16px 0; border-left: 0; border-top: 0; border-bottom: 0;
+          padding-left: calc(16px + env(safe-area-inset-left, 0px));
+          animation: none;
+        }
+      }
+      .mh-member {
+        display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+        min-height: 38px; border: 0; border-radius: 999px; background: #fff; color: #171a26;
+        font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+      }
+      .mh-user-card {
+        display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px 8px 8px;
+        border: 0; border-radius: 14px; background: rgba(255,255,255,0.14); color: #fff;
+        font-family: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent;
+      }
+      .mh-av { flex: 0 0 auto; width: 38px; height: 38px; }
+      .mh-user-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+      .mh-user-name { font-size: 13px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .mh-user-email { font-size: 10.5px; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .mh-user-card .caret { flex: 0 0 auto; opacity: .85; transition: transform .2s; }
+      .mh-user-card.open .caret { transform: rotate(180deg); }
+      .mh-user-list { display: none; margin-top: 8px; padding: 6px; border-radius: 12px; background: rgba(13,16,40,0.72); border: 1px solid rgba(255,255,255,0.08); }
+      .mh-user-list.open { display: block; }
+      .mh-user-item {
+        display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 0 10px;
+        border: 0; border-radius: 8px; background: none; color: rgba(255,255,255,0.92);
+        font-family: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer;
+      }
+      .mh-user-item:active { background: rgba(255,255,255,0.1); }
+      .mh-user-item .cnt { margin-left: auto; color: rgba(255,255,255,0.55); font-size: 11px; }
+      .mh-user-item.danger { color: #ff8a8a; }
+      .mh-user-sep { height: 1px; margin: 4px 0; background: rgba(255,255,255,0.1); }
+      .mh-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-top: 14px; }
+      .mh-item {
+        display: flex; align-items: center; justify-content: space-between; gap: 6px;
+        min-height: 38px; padding: 0; border: 0; background: none; color: #fff;
+        font-family: inherit; font-size: 13px; font-weight: 700; text-align: left; cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .mh-item.danger { color: #ffb4b4; }
+      .mh-item .caret { width: 14px; height: 14px; transition: transform .2s; opacity: .85; }
+      .mh-item.exp .caret { transform: rotate(180deg); }
+      .mh-sub { grid-column: 1 / -1; display: none; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 4px 0 8px; }
+      .mh-sub.open { display: grid; }
+      .mh-chip {
+        padding: 8px 6px; border: 0; border-radius: 8px; background: rgba(255,255,255,0.13); color: #fff;
+        font-family: inherit; font-size: 12px; font-weight: 600; text-align: center; cursor: pointer;
+      }
+      @media (max-width: 380px) { .mh-sub { grid-template-columns: repeat(2, 1fr); } }
+
       /* ===== END MOBILE HERO ===== */
       .movie-grid {
         display: grid;
@@ -2288,9 +2522,9 @@
         .header-top.scrolled { background: rgba(13,13,13,0.7); }
         /* Logo tên phim: thấp hơn để không chạm vào nav */
         .hero-title-logo {
-          max-height: 64px;
-          max-height: clamp(34px, 22svh, 76px);
-          max-width: min(100%, 260px);
+          max-height: 96px;
+          max-height: clamp(51px, 33svh, 114px);
+          max-width: min(100%, 390px);
           margin-bottom: 6px;
         }
       }
@@ -2458,6 +2692,54 @@
       .me-btn.danger:hover { border-color: #f87171; }
       .me-empty { text-align: center; padding: 60px 16px; color: var(--muted); font-size: 14px; line-height: 1.7; }
       .me-empty .me-btn { margin-top: 14px; }
+
+      /* ===== TRANG QUẢN LÝ TÀI KHOẢN (sidebar kiểu ChợPhim) ===== */
+      .me-layout { display: flex; flex-direction: column; gap: 20px; align-items: flex-start; }
+      .me-aside { width: 100%; flex-shrink: 0; }
+      .me-main { flex: 1; min-width: 0; width: 100%; }
+      .me-aside-card {
+        background: #191b24; border-radius: 18px; padding: 18px 16px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,.4), 0 8px 10px -6px rgba(0,0,0,.4);
+        display: flex; flex-direction: column; min-height: 0;
+      }
+      .me-aside-title { font-size: 20px; font-weight: 700; color: var(--accent); margin: 2px 4px 14px; }
+      .me-nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+      .me-nav::-webkit-scrollbar { display: none; }
+      .me-nav-item {
+        display: flex; align-items: center; gap: 12px; flex-shrink: 0; white-space: nowrap;
+        background: rgba(255,255,255,.04); border: 1px solid transparent; color: #9aa0ad;
+        font-family: inherit; font-size: 14px; font-weight: 500; text-align: left;
+        padding: 11px 16px; border-radius: 12px; cursor: pointer; transition: all .2s;
+      }
+      .me-nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+      .me-nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+      .me-nav-item.active { background: rgba(245,166,35,.14); border-color: rgba(245,166,35,.4); color: var(--accent); }
+      .me-nav-cnt { font-style: normal; margin-left: auto; font-size: 11px; color: #cfd3dc; background: rgba(255,255,255,.08); border-radius: 10px; padding: 1px 8px; }
+      .me-nav-cnt:empty { display: none; }
+      .me-aside-foot { display: none; }
+      .me-aside-av { width: 56px; height: 56px; font-size: 22px; border-width: 2px; flex-shrink: 0; }
+      .me-aside-user { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; min-width: 0; }
+      .me-aside-meta { min-width: 0; }
+      .me-aside-name { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .me-aside-email { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+      .me-aside-logout {
+        display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none;
+        color: #cfd3dc; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+        padding: 10px 6px; border-radius: 10px; transition: all .2s;
+      }
+      .me-aside-logout svg { width: 18px; height: 18px; }
+      .me-aside-logout:hover { color: #f87171; background: rgba(248,113,113,.08); }
+      @media (min-width: 900px) {
+        .me-layout { flex-direction: row; gap: 32px; }
+        .me-aside { width: 300px; position: sticky; top: 96px; align-self: flex-start; }
+        .me-aside-card { padding: 24px; min-height: 560px; max-height: calc(100vh - 120px); }
+        .me-aside-main { flex: 1; }
+        .me-nav { flex-direction: column; overflow: visible; gap: 6px; padding: 0; }
+        .me-nav-item { width: 100%; }
+        .me-aside-foot { display: block; margin-top: 24px; padding-top: 18px; border-top: 1px dashed rgba(255,255,255,.12); }
+        .me-main { padding-top: 6px; }
+      }
+      /* ===== END QUẢN LÝ TÀI KHOẢN ===== */
       @media (max-width: 600px) {
         #page-me { margin-top: 96px !important; }
         .me-profile { gap: 14px; }
@@ -2647,6 +2929,91 @@
         .hero-content { left: calc(24px + var(--sal)); right: calc(24px + var(--sar)); }
         .nav-inner { padding-left: calc(24px + var(--sal)); padding-right: calc(24px + var(--sar)); }
       }
+      /* ===== DESKTOP: hàng menu (Trang Chủ / Phim Lẻ / Phim Bộ / thể loại) nằm CÙNG HÀNG với logo + tìm kiếm ===== */
+      @media (min-width: 901px) and (min-height: 501px) {
+        .header-top .nav {
+          position: static !important;
+          top: auto !important;
+          flex: 1 1 auto;
+          min-width: 0;
+          margin-left: 8px;
+          background: transparent !important;
+          backdrop-filter: none !important;
+        }
+        .header-top .nav-inner {
+          max-width: none;
+          margin: 0;
+          padding: 0 !important;
+          gap: 2px;
+          height: 100%;
+        }
+        .header-top .nav { align-self: stretch; }
+        .header-top .nav-inner { align-items: center; overflow: visible; }
+        .header-top .nav-link {
+          padding: 8px 12px;
+          font-size: 13.5px;
+          border: none;
+          border-radius: 0;
+          background: none !important;
+          transition: color .2s;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .header-top .nav-link:hover { color: #fff; background: none !important; }
+        .header-top .nav-link.active { color: #fff; font-weight: 700; background: none !important; border: none; }
+        .nav-dd { position: relative; display: flex; align-items: center; height: 100%; }
+        .nav-dd-trigger { display: inline-flex; align-items: center; gap: 5px; }
+        .nav-caret { transition: transform .2s; opacity: .8; }
+        .nav-dd.open .nav-caret { transform: rotate(180deg); }
+        .nav-dd-panel {
+          display: none; position: absolute; top: 100%; left: -8px; z-index: 400;
+          padding: 12px; gap: 4px 6px;
+          background: rgba(18,18,18,0.97); border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 12px; box-shadow: 0 14px 40px rgba(0,0,0,0.6);
+        }
+        .nav-dd.open .nav-dd-panel { display: grid; }
+        .nav-dd-panel.cols-3 { grid-template-columns: repeat(3, minmax(120px, 1fr)); width: 440px; }
+        .nav-dd-panel.cols-2 { grid-template-columns: repeat(2, minmax(120px, 1fr)); width: 300px; }
+        .nav-dd-item {
+          display: block; padding: 8px 10px; border: 0; border-radius: 8px; background: none;
+          color: rgba(255,255,255,0.8); font: inherit; font-size: 13px; text-align: left; cursor: pointer; white-space: nowrap;
+        }
+        .nav-dd-item:hover { color: #fff; background: rgba(255,255,255,0.08); }
+        /* ô tìm kiếm gọn lại để nhường chỗ cho menu */
+        .header-top .search-form { flex: 0 1 280px; max-width: 280px; min-width: 160px; }
+      }
+      @media (min-width: 1500px) {
+        .header-top .search-form { flex-basis: 340px; max-width: 340px; }
+      }
+      /* ===== DESKTOP: hero SÁNG hơn + đúng tông ChợPhim =====
+         ChợPhim phủ lên ảnh màu navy rgb(15,17,26) (#0f111a) — không phải xám trung tính — và thêm
+         1 lớp chấm 3x3px rất mờ (kết cấu mịn, che sọc màu). Ở đây dùng đúng màu đó, phủ nhẹ để ảnh vẫn sáng.
+         Điểm cuối đáy vẫn là #0d0d0d đặc để liền mạch với nền trang bên dưới. */
+      @media (min-width: 901px) and (min-height: 501px) {
+        .hero-vignette {
+          background:
+            radial-gradient(rgba(0,0,0,0.12) 0.4px, transparent 1px) 0 0 / 3px 3px,
+            linear-gradient(to bottom, rgba(15,17,26,0.5) 0%, rgba(15,17,26,0.18) 45%, rgba(15,17,26,0) 100%) top / 100% 150px no-repeat,
+            radial-gradient(ellipse at 55% 45%, transparent 60%, rgba(15,17,26,0.18) 100%);
+        }
+        .hero-grad {
+          background: linear-gradient(to right,
+            rgba(15,17,26,0.6) 0%,
+            rgba(15,17,26,0.32) 24%,
+            rgba(15,17,26,0.07) 44%,
+            rgba(15,17,26,0) 58%);
+        }
+        .hero-grad2 {
+          height: 230px;
+          background: linear-gradient(to top,
+            rgba(13,13,13,1) 0%,
+            rgba(15,17,26,0.78) 28%,
+            rgba(15,17,26,0.32) 62%,
+            rgba(15,17,26,0) 100%);
+        }
+        /* chữ trên ảnh sáng vẫn dễ đọc nhờ đổ bóng thay vì tối cả ảnh */
+        .hero-title, .hero-title-en, .hero-genre-pills, .hero-badges { text-shadow: 0 2px 10px rgba(0,0,0,0.65); }
+        .hero-desc { color: rgba(255,255,255,0.88); text-shadow: 0 1px 6px rgba(0,0,0,0.85), 0 0 16px rgba(0,0,0,0.5); }
+      }
       /* ===== END FIX TAI THỎ ===== */
 
       /* ===== HERO GIỮ NGUYÊN KÍCH THƯỚC KHI THANH CÔNG CỤ SAFARI HIỆN/ẨN =====
@@ -2682,7 +3049,48 @@
         #browse-grid .movie-card .mc-sub { font-size: 11px; }
       }
       /* ===== END TRANG DUYỆT PHIM ===== */
-    </style>
+    
+      /* ===== BỘ LỌC KIỂU CHỢPHIM ===== */
+      .fp-toggle-row { display:flex; align-items:center; gap:12px; margin:6px 0 14px; flex-wrap:wrap; }
+      .fp-toggle { display:inline-flex; align-items:center; gap:9px; background:none; border:none; color:#fff; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer; padding:6px 2px; }
+      .fp-toggle:hover { color:var(--accent); }
+      .fp-toggle.open { color:var(--accent); }
+      .fp-badge { font-style:normal; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--accent); color:#000; font-size:11px; font-weight:800; display:none; align-items:center; justify-content:center; }
+      .fp-badge.on { display:inline-flex; }
+      .fp-clear { background:rgba(248,113,113,.1); border:1px solid rgba(248,113,113,.35); color:#f87171; border-radius:999px; padding:5px 13px; font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+      .fp-clear:hover { background:rgba(248,113,113,.18); }
+      .fp-panel { display:none; border:1px dashed rgba(255,255,255,.18); border-radius:20px; padding:10px 24px 24px; margin-bottom:24px; background:rgba(255,255,255,.015); }
+      .fp-panel.open { display:block; animation:fpIn .22s ease; }
+      @keyframes fpIn { from{opacity:0;transform:translateY(-6px);} to{opacity:1;transform:none;} }
+      .fp-row { display:flex; align-items:flex-start; gap:12px 20px; padding:16px 0; border-bottom:1px dashed rgba(255,255,255,.1); flex-wrap:wrap; }
+      .fp-label { flex:0 0 130px; padding-top:7px; font-size:14px; font-weight:700; color:#fff; }
+      .fp-chips { flex:1 1 0; min-width:0; display:flex; flex-wrap:wrap; gap:6px 8px; }
+      .fp-chip { background:transparent; border:1px solid transparent; border-radius:6px; padding:7px 13px; color:rgba(255,255,255,.6); font-family:inherit; font-size:14px; font-weight:500; cursor:pointer; transition:color .15s,border-color .15s,background .15s; white-space:nowrap; }
+      .fp-chip:hover { color:#fff; }
+      .fp-chip.active { color:var(--accent); border-color:var(--accent); background:rgba(245,166,35,.08); font-weight:700; }
+      .fp-year-input { flex:0 0 auto; display:inline-flex; align-items:center; gap:7px; height:34px; padding:0 14px; border-radius:999px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); color:rgba(255,255,255,.55); }
+      .fp-year-input:focus-within { border-color:var(--accent); }
+      .fp-year-input input { width:84px; background:none; border:none; outline:none; color:#fff; font-family:inherit; font-size:14px; }
+      .fp-year-input input::placeholder { color:rgba(255,255,255,.4); }
+      .fp-actions { display:flex; gap:12px; padding-top:22px; flex-wrap:wrap; }
+      .fp-btn-go { background:linear-gradient(135deg,#ffd166,#f5a623); color:#000; border:none; border-radius:999px; padding:12px 26px; font-family:inherit; font-size:14px; font-weight:700; cursor:pointer; box-shadow:0 4px 16px rgba(245,166,35,.3); transition:transform .15s,opacity .15s; }
+      .fp-btn-go:hover { transform:translateY(-1px); opacity:.93; }
+      .fp-btn-close, .fp-btn-reset { background:transparent; color:rgba(255,255,255,.75); border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:12px 24px; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+      .fp-btn-close:hover, .fp-btn-reset:hover { color:#fff; border-color:rgba(255,255,255,.4); }
+      @media (max-width: 640px) {
+        .fp-panel { padding:4px 14px 18px; border-radius:16px; }
+        .fp-row { padding:13px 0; flex-direction:column; gap:8px; }
+        .fp-label { flex:none; padding-top:0; font-size:13px; }
+        .fp-chips { gap:6px; }
+        .fp-chip { padding:6px 11px; font-size:13px; border-color:rgba(255,255,255,.1); }
+        .fp-chip.active { border-color:var(--accent); }
+        .fp-actions { gap:8px; }
+        .fp-btn-go, .fp-btn-close, .fp-btn-reset { padding:11px 18px; font-size:13px; }
+        .fp-btn-go { flex:1 1 100%; text-align:center; }
+        .fp-btn-close, .fp-btn-reset { flex:1 1 0; }
+      }
+      /* ===== END BỘ LỌC ===== */
+</style>
   </head>
   <body style="background:#0d0d0d">
 
@@ -2818,6 +3226,10 @@
       </div>
 
       <div class="header-top">
+        <button class="mh-burger" id="mh-burger" type="button" aria-label="Menu" aria-expanded="false" onclick="toggleMhMenu(event)">
+          <svg class="ic-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          <svg class="ic-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
         <div class="logo" onclick="showHome()">
           <div class="logo-icon-wrap">
           <div class="logo-glow"></div>
@@ -2877,6 +3289,22 @@
           </button>
           <div class="search-suggest" id="search-suggest"></div>
         </div>
+        <nav class="nav">
+          <div class="nav-inner">
+            <a class="nav-link active" onclick="event.preventDefault(); setNav(this); closeNavDD(); showHome();">Đề Xuất</a>
+            <a class="nav-link" onclick="event.preventDefault(); setNav(this); closeNavDD(); filterByType('movie');">Phim Lẻ</a>
+            <a class="nav-link" onclick="event.preventDefault(); setNav(this); closeNavDD(); filterByType('series');">Phim Bộ</a>
+            <div class="nav-dd" id="nav-dd-genre" onmouseenter="openNavDD('genre')" onmouseleave="closeNavDD()">
+              <a class="nav-link nav-dd-trigger" onclick="event.preventDefault(); openNavDD('genre');">Thể Loại <svg class="nav-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></a>
+              <div class="nav-dd-panel cols-3" id="nav-dd-panel-genre"></div>
+            </div>
+            <div class="nav-dd" id="nav-dd-country" onmouseenter="openNavDD('country')" onmouseleave="closeNavDD()">
+              <a class="nav-link nav-dd-trigger" onclick="event.preventDefault(); openNavDD('country');">Quốc Gia <svg class="nav-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></a>
+              <div class="nav-dd-panel cols-2" id="nav-dd-panel-country"></div>
+            </div>
+            <a class="nav-logout" onclick="doLogout()">🚪 Đăng xuất</a>
+          </div>
+        </nav>
         <div class="header-top-row1">
           <div class="user-menu" id="user-menu">
             <button class="um-trigger" id="um-trigger" type="button" onclick="toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false" title="Tài khoản">
@@ -2906,97 +3334,79 @@
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
       </div>
-      <nav class="nav">
-        <div class="nav-inner">
-          <a
-            class="nav-link active"
-            onclick="event.preventDefault();
-              setNav(this);
-              showHome();
-            "
-            >Trang Chủ</a
-          >
-          <a
-            class="nav-link"
-            onclick="event.preventDefault();
-              setNav(this);
-              filterByType('movie');
-            "
-            >Phim Lẻ</a
-          >
-          <a
-            class="nav-link"
-            onclick="event.preventDefault();
-              setNav(this);
-              filterByType('series');
-            "
-            >Phim Bộ</a
-          >
-          <a
-            class="nav-link"
-            onclick="event.preventDefault();
-              setNav(this);
-              filterByGenre('action');
-            "
-            >Hành Động</a
-          >
-          <a
-            class="nav-link"
-            onclick="event.preventDefault();
-              setNav(this);
-              filterByGenre('romance');
-            "
-            >Tình Cảm</a
-          >
-          <a
-            class="nav-link"
-            onclick="event.preventDefault();
-              setNav(this);
-              filterByGenre('horror');
-            "
-            >Kinh Dị</a
-          >
-          <a
-            class="nav-link"
-            onclick="event.preventDefault();
-              setNav(this);
-              filterByGenre('comedy');
-            "
-            >Hài Hước</a
-          >
-          <a class="nav-logout" onclick="doLogout()">🚪 Đăng xuất</a>
+      <div class="mh-menu-ov" id="mh-menu-ov" onclick="closeMhMenu()"></div>
+      <div class="mh-menu" id="mh-menu">
+        <div class="mh-user" id="mh-user" style="display:none">
+          <button class="mh-user-card" type="button" id="mh-user-card" onclick="mhUserToggle()">
+            <span class="um-avatar mh-av" id="mh-av"></span>
+            <span class="mh-user-meta"><span class="mh-user-name" id="mh-user-name"></span><span class="mh-user-email" id="mh-user-email"></span></span>
+            <svg class="caret" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="mh-user-list" id="mh-user-list">
+            <button class="mh-user-item" type="button" onclick="mhMenuGo('me','favs')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.4-9.3-9A5.3 5.3 0 0 1 12 6a5.3 5.3 0 0 1 9.3 6c-2.3 4.6-9.3 9-9.3 9z"/></svg>Yêu thích<span class="cnt" id="mh-cnt-favs"></span></button>
+            <button class="mh-user-item" type="button" onclick="mhMenuGo('me','list')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Danh sách<span class="cnt" id="mh-cnt-list"></span></button>
+            <button class="mh-user-item" type="button" onclick="mhMenuGo('me','continue')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/></svg>Xem tiếp</button>
+            <button class="mh-user-item" type="button" onclick="mhMenuGo('me','account')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>Tài khoản</button>
+            <div class="mh-user-sep"></div>
+            <button class="mh-user-item danger" type="button" onclick="mhMenuGo('logout')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Đăng xuất</button>
+          </div>
         </div>
-      </nav>
+        <button class="mh-member" id="mh-member" type="button" onclick="mhMenuGo('account')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7z"/></svg>Thành viên
+        </button>
+        <div class="mh-grid">
+          <button class="mh-item" type="button" onclick="mhMenuGo('home')">Trang chủ</button>
+          <button class="mh-item" type="button" onclick="mhMenuGo('type','movie')">Phim Lẻ</button>
+          <button class="mh-item" type="button" onclick="mhMenuGo('type','series')">Phim Bộ</button>
+          <button class="mh-item" type="button" id="mh-exp-genre" onclick="mhMenuExpand('genre')">Thể loại
+            <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="mh-sub" id="mh-sub-genre"></div>
+          <button class="mh-item" type="button" id="mh-exp-country" onclick="mhMenuExpand('country')">Quốc gia
+            <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+          <button class="mh-item danger" type="button" id="mh-logout" onclick="mhMenuGo('logout')">Đăng xuất</button>
+          <div class="mh-sub" id="mh-sub-country"></div>
+        </div>
+      </div>
 
     <!-- HOME -->
     <div id="page-home">
       <!-- MOBILE HERO -->
       <div id="mobile-hero">
+        <div class="mhero-bg" id="mhero-bg"></div>
+        <div class="mpills" data-mpills></div>
         <div class="mhero-strip" id="mhero-strip"></div>
-        <div class="mhero-dots" id="mhero-dots"></div>
-        <div class="mhero-info">
+        <div class="mhero-info" id="mhero-info">
           <img class="mhero-title-logo" id="mh-title-logo" src="" alt="" style="display:none;" />
-          <div class="mhero-title" id="mh-title">Đang tải...</div>
+          <div class="mhero-title" id="mh-title"></div>
           <div class="mhero-title-en" id="mh-title-en"></div>
-          <div class="mhero-badges" id="mh-badges"></div>
-          <div class="mhero-desc" id="mh-desc"></div>
           <div class="mhero-btns">
             <button class="mhero-btn-watch" onclick="playHero()">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="#000"><polygon points="5,3 19,12 5,21"/></svg>Xem phim
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="#000"><polygon points="5,3 19,12 5,21"/></svg>Xem phim
             </button>
-            <button class="mhero-btn-info" onclick="openPlayer(parseInt(document.getElementById('hero').dataset.id))">ℹ Thông tin</button>
+            <button class="mhero-btn-info" onclick="openPlayer(parseInt(document.getElementById('hero').dataset.id))">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#111" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01" stroke-linecap="round"/></svg>Thông tin
+            </button>
           </div>
+          <div class="mhero-badges" id="mh-badges"></div>
+          <div class="mhero-desc" id="mh-desc"></div>
         </div>
+        <div class="mhero-dots" id="mhero-dots"></div>
       </div>
       <div class="hero" id="hero">
         <div class="hero-bg-blur" id="hero-bg-blur"></div>
+        <div class="hero-bg hero-bg-old" id="hero-bg-old"></div>
         <div class="hero-bg" id="hero-bg"></div>
         <div class="hero-vignette"></div>
         <div class="hero-grad"></div>
         <div class="hero-grad2"></div>
         <div class="hero-content">
           <img class="hero-title-logo" id="h-title-logo" src="" alt="" style="display:none;" />
-          <div class="hero-title" id="h-title">Đang tải...</div>
+          <div class="hero-title" id="h-title"></div>
           <div class="hero-title-en" id="h-title-en"></div>
           <div class="hero-badges">
             <span class="hbadge imdb"><span class="imdb-word">IMDb</span><span id="hb-rating">8.5</span></span>
@@ -3100,22 +3510,62 @@
     <!-- BROWSE -->
     <div id="page-browse" style="display: none; margin-top: 80px">
       <div class="container">
+        <div class="mpills" data-mpills></div>
         <div class="browse-hd"><h1 id="browse-title">Duyệt Tìm</h1></div>
-        <div class="filter-bar">
-          <span class="filter-label">🔧 Lọc</span>
-          <select class="filter-select" id="f-country" onchange="applyFilter()">
+        <!-- ===== BỘ LỌC (kiểu ChợPhim): dùng chung cho mọi tab duyệt phim ===== -->
+        <div class="fp-toggle-row">
+          <button type="button" class="fp-toggle" id="fp-toggle" onclick="fpToggle()" aria-expanded="false">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+            <span>Bộ lọc</span><em class="fp-badge" id="fp-badge"></em>
+          </button>
+          <button type="button" class="fp-clear" id="fp-clear" onclick="fpReset()" style="display:none">✕ Xóa bộ lọc</button>
+        </div>
+        <div class="fp-panel" id="fp-panel">
+          <div class="fp-row"><div class="fp-label">Quốc gia:</div><div class="fp-chips" data-fp="f-country"></div></div>
+          <div class="fp-row"><div class="fp-label">Loại phim:</div><div class="fp-chips" data-fp="f-type"></div></div>
+          <div class="fp-row"><div class="fp-label">Thể loại:</div><div class="fp-chips" data-fp="f-genre"></div></div>
+          <div class="fp-row"><div class="fp-label">Ngôn ngữ:</div><div class="fp-chips" data-fp="f-lang"></div></div>
+          <div class="fp-row"><div class="fp-label">Năm sản xuất:</div>
+            <div class="fp-chips" data-fp="f-year"></div>
+            <label class="fp-year-input"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+              <input type="text" id="fp-year-box" inputmode="numeric" maxlength="4" placeholder="Nhập năm" oninput="fpYearTyped(this.value)" onkeydown="if(event.key==='Enter')fpApply()"></label>
+          </div>
+          <div class="fp-row"><div class="fp-label">Sắp xếp:</div><div class="fp-chips" data-fp="f-sort"></div></div>
+          <div class="fp-actions">
+            <button type="button" class="fp-btn-go" onclick="fpApply()">Lọc kết quả <span>→</span></button>
+            <button type="button" class="fp-btn-close" onclick="fpClose(true)">Đóng</button>
+            <button type="button" class="fp-btn-reset" onclick="fpReset()">Đặt lại</button>
+          </div>
+        </div>
+        <!-- Trạng thái bộ lọc (ẩn): các tab/menu khác đặt & đọc giá trị ở đây -->
+        <div style="display:none">
+          <select id="f-country">
             <option value="">Quốc gia</option>
-            <option value="kr">Hàn Quốc</option>
             <option value="cn">Trung Quốc</option>
+            <option value="kr">Hàn Quốc</option>
+            <option value="jp">Nhật Bản</option>
+            <option value="th">Thái Lan</option>
+            <option value="us">Âu Mỹ</option>
             <option value="tw">Đài Loan</option>
             <option value="hk">Hồng Kông</option>
-            <option value="jp">Nhật Bản</option>
-            <option value="us">Âu Mỹ</option>
             <option value="in">Ấn Độ</option>
+            <option value="gb">Anh</option>
+            <option value="fr">Pháp</option>
+            <option value="ca">Canada</option>
             <option value="vn">Việt Nam</option>
-            <option value="th">Thái Lan</option>
+            <option value="ru">Nga</option>
+            <option value="ph">Philippines</option>
+            <option value="au">Úc</option>
+            <option value="de">Đức</option>
+            <option value="es">Tây Ban Nha</option>
+            <option value="it">Ý</option>
+            <option value="tr">Thổ Nhĩ Kỳ</option>
+            <option value="id">Indonesia</option>
+            <option value="my">Malaysia</option>
+            <option value="br">Brazil</option>
+            <option value="nl">Hà Lan</option>
           </select>
-          <select class="filter-select" id="f-genre" onchange="applyFilter()">
+          <select id="f-genre">
             <option value="">Thể loại</option>
             <option value="action">Hành Động</option>
             <option value="romance">Tình Cảm</option>
@@ -3142,26 +3592,25 @@
             <option value="anime">Anime & Hoạt Hình</option>
             <option value="tvshow">TV Shows</option>
           </select>
-          <select class="filter-select" id="f-year" onchange="applyFilter()">
-            <option value="">Năm</option>
-            <option value="2026">2026</option>
-            <option value="2025">2025</option>
-            <option value="2024">2024</option>
-            <option value="2023">2023</option>
-            <option value="2022">2022</option>
-            <option value="2021">2021 trở về</option>
-          </select>
-          <select class="filter-select" id="f-type" onchange="applyFilter()">
+          <select id="f-type">
             <option value="">Loại</option>
             <option value="movie">Phim lẻ</option>
             <option value="series">Phim bộ</option>
           </select>
-          <select class="filter-select" id="f-sort" onchange="applyFilter()">
+          <select id="f-lang">
+            <option value="">Ngôn ngữ</option>
+            <option value="sub">Phụ đề</option>
+            <option value="tm">Thuyết minh</option>
+            <option value="dub">Lồng tiếng</option>
+          </select>
+          <input type="hidden" id="f-year" value="">
+          <select id="f-sort">
             <option value="default">Mới nhất</option>
+            <option value="updated">Mới cập nhật</option>
             <option value="rating">Đánh giá cao</option>
-            <option value="year">Năm mới</option>
           </select>
         </div>
+        <!-- ===== END BỘ LỌC ===== -->
         <div class="movie-grid" id="browse-grid"></div>
         <div class="pagination" id="pagination"></div>
       </div>
@@ -3170,9 +3619,51 @@
     <!-- ME PAGE: Tài khoản / Yêu thích / Danh sách -->
     <div id="page-me" style="display: none; margin-top: 80px;">
       <div class="container me-wrap">
-        <h1 id="me-title">Tài khoản</h1>
-        <div class="me-sub" id="me-sub"></div>
-        <div id="me-body"></div>
+        <div class="me-layout">
+          <aside class="me-aside">
+            <div class="me-aside-card">
+              <div class="me-aside-main">
+                <h2 class="me-aside-title">Quản lý tài khoản</h2>
+                <nav class="me-nav" id="me-nav">
+                  <button type="button" class="me-nav-item" data-sec="account" onclick="meSwitch('account')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+                    <span>Tài khoản</span>
+                  </button>
+                  <button type="button" class="me-nav-item" data-sec="favs" onclick="meSwitch('favs')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.4-9.3-9A5.3 5.3 0 0 1 12 6a5.3 5.3 0 0 1 9.3 6c-2.3 4.6-9.3 9-9.3 9z"/></svg>
+                    <span>Yêu thích</span><em class="me-nav-cnt" id="me-cnt-favs"></em>
+                  </button>
+                  <button type="button" class="me-nav-item" data-sec="list" onclick="meSwitch('list')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>Danh sách</span><em class="me-nav-cnt" id="me-cnt-list"></em>
+                  </button>
+                  <button type="button" class="me-nav-item" data-sec="continue" onclick="meSwitch('continue')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/></svg>
+                    <span>Xem tiếp</span><em class="me-nav-cnt" id="me-cnt-continue"></em>
+                  </button>
+                </nav>
+              </div>
+              <div class="me-aside-foot">
+                <div class="me-aside-user">
+                  <div class="um-avatar me-aside-av" id="me-aside-av"></div>
+                  <div class="me-aside-meta">
+                    <div class="me-aside-name" id="me-aside-name"></div>
+                    <div class="me-aside-email" id="me-aside-email"></div>
+                  </div>
+                </div>
+                <button type="button" class="me-aside-logout" onclick="doLogout()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                  Thoát
+                </button>
+              </div>
+            </div>
+          </aside>
+          <main class="me-main">
+            <h1 id="me-title">Tài khoản</h1>
+            <div class="me-sub" id="me-sub"></div>
+            <div id="me-body"></div>
+          </main>
+        </div>
       </div>
     </div>
 
@@ -3942,9 +4433,29 @@
         UD.set(key, _getIdList(key).filter(function (x) { return x !== id; }));
         onUserDataChanged();
       }
+      function meSwitch(section) {
+        _meSection = section || "account";
+        renderMe();
+        resetTimer();
+      }
+      function renderMeNav() {
+        try {
+          document.querySelectorAll("#me-nav .me-nav-item").forEach(function (b) {
+            b.classList.toggle("active", b.dataset.sec === _meSection);
+          });
+          const setT = function (id, v) { const e = document.getElementById(id); if (e) e.textContent = v; };
+          setT("me-cnt-favs", getFavs().length || "");
+          setT("me-cnt-list", getWatchlist().length || "");
+          setT("me-cnt-continue", Object.keys(UD.get("progress", {}) || {}).length || "");
+          const av = document.getElementById("me-aside-av"); if (av) av.innerHTML = _avatarInner();
+          setT("me-aside-name", getUserDisplayName());
+          setT("me-aside-email", currentUserEmail || "");
+        } catch (e) {}
+      }
       function renderMe() {
         const body = document.getElementById("me-body"), title = document.getElementById("me-title"), sub = document.getElementById("me-sub");
         if (!body || !title || !sub) return;
+        renderMeNav();
         const sec = _meSection;
         if (sec === "continue") {
           const entries = Object.entries(getProgressStore()).sort(function (x, y) { return (y[1].savedAt || 0) - (x[1].savedAt || 0); });
@@ -4077,17 +4588,18 @@
       }
 
       async function loadFromStorage() {
+        const _tPerf = performance.now();
         try {
           // Tải bản "nhẹ" (không kèm danh sách tập) để hiện trang nhanh; danh sách tập
           // được tải nền ngay sau đó (xem loadEpisodesInBackground). Nếu bảng thiếu cột
           // (400) thì tự lùi về cách tải cũ để web không bao giờ bị trống.
-          const _baseCols = "id,title,titleen,year,genre,country,type,rating,ep,sub,poster,backdrop,description,videosource,embedurl,embedurl2,ophim_slug,totalep,currentep,epstatus,series_group,part_number,created_at";
+          const _baseCols = "id,title,titleen,year,genre,country,type,rating,ep,sub,description,videosource,embedurl,embedurl2,ophim_slug,totalep,currentep,epstatus,series_group,part_number,created_at";
           const _baseColsNo3 = _baseCols;
           // order thêm id để thứ tự ổn định khi phân trang (tránh trùng/sót khi created_at bằng nhau)
+          // Bản NHẸ: KHÔNG kèm poster/backdrop/logo (có thể rất nặng nếu là ảnh base64).
+          // Ảnh được tải riêng ngay sau đó (ưu tiên ảnh hero) -> xem fetchMovieImages().
           const _queries = [
-            `select=${_baseCols},embedurl3,logo&order=created_at.desc,id.desc`,
             `select=${_baseCols},embedurl3&order=created_at.desc,id.desc`,
-            `select=${_baseCols},logo&order=created_at.desc,id.desc`,
             `select=${_baseCols}&order=created_at.desc,id.desc`,
             `select=*&order=created_at.desc,id.desc`
           ];
@@ -4103,6 +4615,7 @@
             if (res.status !== 400) break;
           }
           if (!res.ok) return [];
+          console.info("[perf] danh sách phim (nhẹ): trang đầu " + Math.round(text.length / 1024) + " KB, " + Math.round(performance.now() - _tPerf) + " ms");
           let firstPage = JSON.parse(text);
           if (!Array.isArray(firstPage)) return [];
           const _seen = new Map();
@@ -4132,6 +4645,8 @@
             sub: m.sub || "Vietsub",
             poster: m.poster || "",
             backdrop: _smallImg(m.backdrop, "w1280") || null,
+            backdropHD: m.backdrop || null,
+            _imgReady: Object.prototype.hasOwnProperty.call(m, "poster"),
             desc: m.description || "",
             logo: m.logo || null,
             uploaded: true,
@@ -4229,15 +4744,11 @@
 
       const CL = (c) =>
         ({
-          kr: "Hàn Quốc",
-          cn: "Trung Quốc",
-          tw: "Đài Loan",
-          hk: "Hồng Kông",
-          jp: "Nhật Bản",
-          us: "Âu Mỹ",
-          in: "Ấn Độ",
-          vn: "Việt Nam",
-          th: "Thái Lan",
+          kr: "Hàn Quốc", cn: "Trung Quốc", tw: "Đài Loan", hk: "Hồng Kông", jp: "Nhật Bản",
+          us: "Âu Mỹ", in: "Ấn Độ", vn: "Việt Nam", th: "Thái Lan",
+          gb: "Anh", fr: "Pháp", ca: "Canada", ru: "Nga", ph: "Philippines", au: "Úc",
+          de: "Đức", es: "Tây Ban Nha", it: "Ý", tr: "Thổ Nhĩ Kỳ", id: "Indonesia",
+          my: "Malaysia", br: "Brazil", nl: "Hà Lan",
         })[c] || c;
 
       function cardHTML(m) {
@@ -4255,7 +4766,7 @@
     <div class="mc-top-grad"></div>
     <div class="mc-bottom-grad"></div>
     <div class="mc-badges"><span class="mc-badge ${bc}">${bt}</span>${partBadge}</div>
-    <img class="mc-poster" src="${imgSrc}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    <img class="mc-poster" data-mid="${m.id}" src="${imgSrc}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
     <div class="mc-poster-ph" style="display:none">🎬</div>
     <div class="mc-overlay"></div>
     <div class="mc-body">
@@ -4301,7 +4812,7 @@
       function buildHero() {
         const HERO_COUNT = 10;
 
-        const moviePool = MOVIES.filter(m => m.backdrop && m.backdrop.length > 4);
+        const moviePool = MOVIES.filter(m => (m.backdrop && m.backdrop.length > 4) || m._imgReady === false);
 
         if (HERO_SELECTION && HERO_SELECTION.length) {
           const picked = HERO_SELECTION
@@ -4354,19 +4865,128 @@
         im.referrerPolicy = "no-referrer"; // tránh host ảnh chặn hotlink theo domain
         im.onload = () => {
           if (im.naturalWidth < 2 && !/svg/i.test(url)) { if (cb) cb(false); return; }
-          _heroLogoLoaded.add(url);
-          if (cb) cb(true);
+          // decode() xong mới coi là "sẵn sàng" -> lúc gắn vào DOM không còn bị trễ giải mã
+          (im.decode ? im.decode().catch(() => {}) : Promise.resolve()).then(() => {
+            _heroLogoLoaded.add(url);
+            if (cb) cb(true);
+          });
         };
         im.onerror = () => { if (cb) cb(false); };
         im.src = url;
       }
+
+      // Ảnh nền hero đã tải + giải mã xong
+      const _heroImgLoaded = new Set();
+      /* Ảnh nền hero: dùng bản ĐỘ PHÂN GIẢI CAO (TMDB "original") thay vì bản w1280 đã bị thu nhỏ để làm thẻ phim.
+         Màn nhỏ / mạng yếu (cần <= 1280px) thì vẫn dùng w1280 cho nhẹ. */
+      function _heroBgUrl(m) {
+        if (!m) return "";
+        const raw = m.backdropHD || m.backdrop;
+        if (!raw) return m.poster || "";
+        try {
+          const need = Math.max(window.innerWidth || 0, (window.screen && screen.width) || 0) * (window.devicePixelRatio || 1);
+          const size = need > 1300 ? "original" : "w1280";
+          return String(raw).replace(/image\.tmdb\.org\/t\/p\/(?:w\d+|original)\//, "image.tmdb.org/t/p/" + size + "/");
+        } catch (e) { return raw; }
+      }
+      function _preloadHeroImg(url, cb) {
+        if (!url) { if (cb) cb(false); return; }
+        if (_heroImgLoaded.has(url)) { if (cb) cb(true); return; }
+        const im = new Image();
+        const done = (ok) => { if (ok) _heroImgLoaded.add(url); if (cb) cb(ok); };
+        im.onload = () => { (im.decode ? im.decode().catch(() => {}) : Promise.resolve()).then(() => done(true)); };
+        im.onerror = () => done(false);
+        im.src = url;
+      }
+
+      // Chờ ẢNH NỀN + LOGO của 1 phim cùng sẵn sàng rồi mới gọi cb (tối đa maxWait ms, tránh kẹt khi mạng chậm)
+      function _heroAssetsReady(m, cb, maxWait) {
+        // Cùng điều kiện CSS đang ẩn .hero (mobile dọc -> dùng hero mobile, chữ thay logo)
+        const desktopVisible = !(window.matchMedia && matchMedia("(max-width: 900px) and (min-height: 501px)").matches);
+        const bgUrl = desktopVisible ? _heroBgUrl(m) : (m.poster || m.backdrop || "");
+        const logoUrl = desktopVisible ? (m.logo || "") : ""; // mobile dọc dùng chữ, không cần chờ logo
+        let pending = 0, finished = false, timer = null;
+        const finish = () => { if (finished) return; finished = true; clearTimeout(timer); cb(); };
+        const one = () => { if (--pending <= 0) finish(); };
+        if (bgUrl && !_heroImgLoaded.has(bgUrl)) { pending++; _preloadHeroImg(bgUrl, one); }
+        if (logoUrl && !_heroLogoLoaded.has(logoUrl)) { pending++; _preloadHeroLogo(logoUrl, one); }
+        if (pending <= 0) { finish(); return; }
+        timer = setTimeout(finish, maxWait || 5000); // chờ đủ lâu để logo kịp về cùng ảnh nền
+      }
+
+      // Tải sẵn TOÀN BỘ logo + ảnh nền của các phim trong hero (logo trước vì nhẹ và hay về chậm nhất),
+      // nên khi chuyển slide mọi thứ đã nằm sẵn trong bộ nhớ -> đổi tức thì, cùng lúc
+      let _heroPrefetchSig = "";
+      function _prefetchAllHero() {
+        const sig = heroMs.map(h => h.id + "|" + (h.logo || "") + "|" + _heroBgUrl(h)).join(",");
+        if (sig === _heroPrefetchSig) return;
+        _heroPrefetchSig = sig;
+        const queue = [];
+        for (let k = 0; k < heroMs.length; k++) {
+          const hm = heroMs[(heroI + k) % heroMs.length]; // phim gần slide hiện tại được tải trước
+          if (hm.logo) queue.push(() => new Promise(r => _preloadHeroLogo(hm.logo, r)));
+          queue.push(() => new Promise(r => _preloadHeroImg(_heroBgUrl(hm), r)));
+        }
+        (async () => { for (const job of queue) { try { await job(); } catch (_) {} } })();
+      }
+      // Rê chuột lên thumbnail/chấm -> tải trước phim đó ngay để lúc bấm không phải chờ
+      function _prefetchHeroAt(i) {
+        const hm = heroMs[i]; if (!hm) return;
+        if (hm.logo) _preloadHeroLogo(hm.logo);
+        _preloadHeroImg(_heroBgUrl(hm));
+      }
+      document.addEventListener("pointerover", (e) => {
+        const t = e.target.closest && e.target.closest(".hero-thumb[data-i]");
+        if (t) _prefetchHeroAt(+t.dataset.i);
+      });
+
+      // Đổi slide: ảnh nền + logo + chữ cùng đổi trong 1 lần (không để cái này đi trước cái kia)
+      let _heroSwapReq = 0;
       function renderHero() {
+        if (!heroMs.length) return Promise.resolve();
+        const req = ++_heroSwapReq;
+        _prefetchAllHero();
+        const done = new Promise((resolve) => {
+          _heroAssetsReady(heroMs[heroI], () => {
+            if (req === _heroSwapReq) _renderHeroNow(); // nếu người dùng đã chuyển slide khác trong lúc chờ thì bỏ qua
+            resolve();
+          });
+        });
+        // Tải sẵn ảnh nền + logo của 2 slide kế tiếp
+        [1, 2].forEach((k) => {
+          const nm = heroMs[(heroI + k) % heroMs.length];
+          if (!nm) return;
+          _preloadHeroImg(_heroBgUrl(nm));
+          if (nm.logo) _preloadHeroLogo(nm.logo);
+        });
+        return done;
+      }
+      function _renderHeroNow() {
         if (!heroMs.length) return;
         const m = heroMs[heroI];
         const heroBg = document.getElementById("hero-bg");
         if (!heroBg) return;
-        const heroImgUrl = m.backdrop || m.poster;
-        heroBg.style.backgroundImage = `url('${heroImgUrl}')`;
+        const heroImgUrl = _heroBgUrl(m);
+        const heroRoot = document.getElementById("hero");
+        const slideChanged = !!heroRoot && String(heroRoot.dataset.id || "") !== String(m.id);
+        const prevBgImg = heroBg.style.backgroundImage;
+        if (slideChanged && prevBgImg && prevBgImg !== "none") {
+          // Giữ ảnh cũ ở lớp dưới, ảnh mới mờ dần lên trên
+          const oldBg = document.getElementById("hero-bg-old");
+          if (oldBg) {
+            oldBg.style.backgroundImage = prevBgImg;
+            oldBg.classList.toggle("is-portrait", heroBg.classList.contains("is-portrait"));
+            oldBg.classList.add("show");
+            clearTimeout(oldBg._t);
+            oldBg._t = setTimeout(() => { oldBg.classList.remove("show"); }, 900);
+          }
+        }
+        heroBg.style.backgroundImage = heroImgUrl ? `url('${heroImgUrl}')` : "none";
+        if (slideChanged) {
+          heroBg.classList.remove("fade-in"); void heroBg.offsetWidth; heroBg.classList.add("fade-in");
+          const hc = heroRoot.querySelector(".hero-content");
+          if (hc) { hc.classList.remove("hero-swap"); void hc.offsetWidth; hc.classList.add("hero-swap"); }
+        }
         applyHeroImageOrientation(heroImgUrl);
         const titleEl = document.getElementById("h-title"); if(titleEl) titleEl.textContent = m.title;
         const logoEl = document.getElementById("h-title-logo");
@@ -4379,11 +4999,25 @@
           };
           const showLogo = () => {
             logoEl.referrerPolicy = "no-referrer";
-            logoEl.onerror = showText;
-            if (logoEl.getAttribute("src") !== logoUrl) logoEl.src = logoUrl;
+            logoEl.onerror = () => { if (logoReq === _heroLogoReqId) showText(); };
             logoEl.alt = m.title || "";
-            logoEl.style.display = "block";
-            if (titleEl) { titleEl.style.display = "none"; titleEl.style.visibility = ""; }
+            const reveal = () => {
+              if (logoReq !== _heroLogoReqId) return; // slide đã đổi -> bỏ qua logo này
+              logoEl.style.display = "block";
+              if (titleEl) { titleEl.style.display = "none"; titleEl.style.visibility = ""; }
+            };
+            if (logoEl.getAttribute("src") === logoUrl && logoEl.complete && logoEl.naturalWidth) { reveal(); return; }
+            // Logo mới chưa sẵn sàng: ẩn NGAY logo cũ (tránh đè lên slide mới), chỉ hiện khi logo mới tải xong
+            logoEl.style.display = "none";
+            if (titleEl) { titleEl.style.display = ""; titleEl.style.visibility = "hidden"; }
+            logoEl.onload = reveal;
+            if (logoEl.getAttribute("src") !== logoUrl) logoEl.src = logoUrl;
+            else if (logoEl.complete && logoEl.naturalWidth) reveal();
+            if (logoEl.decode) logoEl.decode().then(reveal, () => {});
+            // Mạng chậm: hiện tên phim bằng chữ tạm, logo về sau sẽ thay vào
+            setTimeout(() => {
+              if (logoReq === _heroLogoReqId && logoEl.style.display === "none" && titleEl) titleEl.style.visibility = "";
+            }, 1500);
           };
           if (!logoUrl) {
             showText(); // phim không có logo -> hiện chữ như bình thường
@@ -4455,32 +5089,40 @@
           const hm = heroMs[i];
           const src = hm.poster || hm.backdrop || "";
           return `<div class="hero-dot${i===heroI?" active":""}" onclick="event.stopPropagation();goHero(${i})" title="${escHtml(hm.title)}">
-            ${src ? `<img src="${src}" alt="${escHtml(hm.title)}" loading="lazy" onerror="this.style.display='none'">` : ""}
+            ${src ? `<img src="${src}" alt="${escHtml(hm.title)}" decoding="async" onerror="this.style.display='none'">` : ""}
           </div>`;
         }).join("");
 
-        // Thumbnail strip — chỉ hiện 5 thumb xung quanh active (2 trước, active, 2 sau)
+        // Thumbnail strip kiểu ChợPhim: dải thumb trượt qua "cửa sổ" cắt ngang, chạy vòng tròn
         const thumbsEl = document.getElementById("hero-thumbs");
-        const THUMB_WINDOW = 2; // số thumb mỗi bên
-        const visibleThumbs = [];
-        for (let i = 0; i < heroMs.length; i++) {
-          if (Math.abs(i - heroI) <= THUMB_WINDOW) visibleThumbs.push(i);
+        if (thumbsEl) {
+          const nT = heroMs.length;
+          const tSig = heroMs.map(hm => hm.id + ((hm.backdrop || hm.poster) ? "i" : "")).join(",");
+          if (thumbsEl.dataset.sig !== tSig) {
+            thumbsEl.dataset.sig = tSig;
+            thumbsEl._prevI = undefined;
+            thumbsEl.innerHTML = heroMs.map((hm, i) => {
+              const src = hm.backdrop || hm.poster || "";
+              return `<div class="hero-thumb" data-i="${i}" onclick="event.stopPropagation();goHero(${i})" title="${escHtml(hm.title)}">${src ? `<img src="${src}" alt="${escHtml(hm.title)}" decoding="async" onerror="this.style.display='none'">` : "🎬"}</div>`;
+            }).join("");
+          }
+          // vị trí tương đối so với thumb đang chọn, quấn vòng trong (-n/2, n/2]
+          const norm = (v) => { v = ((v % nT) + nT) % nT; return v > nT / 2 ? v - nT : v; };
+          const prevI = thumbsEl._prevI;
+          const exp = prevI === undefined ? 0 : norm(prevI - heroI);
+          thumbsEl.querySelectorAll(".hero-thumb").forEach((el, i) => {
+            const o = norm(i - heroI);
+            const prevO = el.dataset.o === undefined ? undefined : +el.dataset.o;
+            // thumb "chui" từ đầu này sang đầu kia của vòng -> nhảy tức thì (đang ẩn), không trượt xuyên qua cửa sổ
+            const wrapped = prevO !== undefined && (o - prevO) !== exp;
+            el.style.transition = wrapped ? "opacity 0.4s, filter 0.4s, border-color 0.3s" : "";
+            el.style.setProperty("--o", o);
+            el.dataset.o = o;
+            el.dataset.d = Math.min(Math.abs(o), 4);
+            el.classList.toggle("active", o === 0);
+          });
+          thumbsEl._prevI = heroI;
         }
-        // Nếu ít hơn 5, bổ sung thêm từ phía còn lại
-        while (visibleThumbs.length < Math.min(5, heroMs.length)) {
-          const minIdx = visibleThumbs[0] - 1;
-          const maxIdx = visibleThumbs[visibleThumbs.length - 1] + 1;
-          if (minIdx >= 0 && !visibleThumbs.includes(minIdx)) visibleThumbs.unshift(minIdx);
-          else if (maxIdx < heroMs.length && !visibleThumbs.includes(maxIdx)) visibleThumbs.push(maxIdx);
-          else break;
-        }
-        thumbsEl.innerHTML = visibleThumbs.map(i => {
-          const hm = heroMs[i];
-          const src = hm.backdrop || hm.poster || "";
-          return `<div class="hero-thumb${i===heroI?" active":""}" onclick="event.stopPropagation();goHero(${i})" title="${escHtml(hm.title)}">
-            ${src ? `<img src="${src}" alt="${escHtml(hm.title)}" loading="lazy" onerror="this.style.display='none'">` : "🎬"}
-          </div>`;
-        }).join("");
 
         renderMobileHero(m);
       }
@@ -4490,6 +5132,7 @@
       }
       let _mobileLogoReqId = 0;
       function renderMobileHero(m) {
+        if (!document.querySelector('[data-mpills] .mpill')) setMPills(_mpillKey);
         const heroEl = document.getElementById("hero");
         if (heroEl) { heroEl.dataset.id = m.id; }
         // Trên mobile: luôn dùng tên chữ bình thường, không dùng ảnh logo tên phim
@@ -4513,32 +5156,33 @@
         }
         const strip = document.getElementById("mhero-strip");
         if (strip) {
-          // Chỉ dựng lại dải poster khi danh sách phim thật sự đổi.
-          // Trước đây innerHTML mỗi lần chuyển slide -> dải bị rỗng, scrollLeft về 0,
-          // ảnh lazy tải lại => nháy/giật. Giờ giữ nguyên DOM, chỉ đổi class active.
-          const sig = heroMs.map(hm => hm.id).join(",");
+          const n = heroMs.length;
+          const sig = heroMs.map(hm => hm.id + ((hm.poster || hm.backdrop) ? "i" : "")).join(",");
           if (strip.dataset.sig !== sig) {
             strip.dataset.sig = sig;
             strip.innerHTML = heroMs.map((hm, i) => {
               const src = hm.poster || hm.backdrop || "";
-              return `<div class="mhero-poster" data-i="${i}" onclick="event.preventDefault();event.stopPropagation();goHero(${i})">
+              return `<div class="mhero-poster" data-i="${i}" onclick="mhTap(${i})">
                 ${src ? `<img src="${src}" alt="${escHtml(hm.title)}" decoding="async" onerror="this.style.background='#222'">` : '<div style="width:100%;height:100%;background:#222;display:flex;align-items:center;justify-content:center;font-size:32px;">🎬</div>'}
-                <div class="mhero-poster-title">${escHtml(hm.title)}</div>
               </div>`;
             }).join("");
+            _bindMhSwipe(strip);
           }
-          let activeEl = null;
+          // Mỗi poster nhận vị trí tương đối so với poster đang chọn (vòng tròn) -> CSS lo phần chuyển động
           strip.querySelectorAll(".mhero-poster").forEach((p, i) => {
-            const on = i === heroI;
-            p.classList.toggle("active", on);
-            if (on) activeEl = p;
+            let o = i - heroI;
+            if (o > n / 2) o -= n; else if (o < -n / 2) o += n;
+            const ao = Math.abs(o);
+            p.style.setProperty("--o", o);
+            p.style.setProperty("--ao", Math.min(ao, 3));
+            p.dataset.d = ao > 2 ? "far" : String(ao);
+            p.classList.toggle("active", o === 0);
           });
-          if (activeEl) {
-            const stripPadding = 14;
-            const targetLeft = (activeEl.offsetLeft - stripPadding) - (strip.offsetWidth / 2) + (activeEl.offsetWidth / 2);
-            strip.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
-          }
         }
+        const mhBg = document.getElementById("mhero-bg");
+        if (mhBg) { const bs = m.poster || m.backdrop || ""; mhBg.style.backgroundImage = bs ? `url("${bs}")` : "none"; }
+        const mhInfo = document.getElementById("mhero-info");
+        if (mhInfo) { mhInfo.classList.remove("mh-anim"); void mhInfo.offsetWidth; mhInfo.classList.add("mh-anim"); }
         const mDots = document.getElementById("mhero-dots");
         if (mDots) {
           if (mDots.children.length !== heroMs.length) {
@@ -4546,6 +5190,196 @@
           }
           Array.from(mDots.children).forEach((d, i) => d.classList.toggle("active", i === heroI));
         }
+      }
+
+      (function () {
+        let t;
+        const on = () => { document.body.classList.add("mh-resizing"); clearTimeout(t); t = setTimeout(() => document.body.classList.remove("mh-resizing"), 250); };
+        window.addEventListener("resize", on);
+        window.addEventListener("orientationchange", on);
+      })();
+      function toggleMhMenu(e) {
+        if (e) e.stopPropagation();
+        const menu = document.getElementById("mh-menu");
+        if (menu && menu.classList.contains("open")) closeMhMenu(); else openMhMenu();
+      }
+      function openMhMenu() {
+        // Đăng nhập rồi: thay nút "Thành viên" bằng thẻ người dùng (avatar, tên, email) + danh sách xổ xuống
+        const logged = typeof isLoggedIn === "function" && isLoggedIn();
+        const lo = document.getElementById("mh-logout"); if (lo) lo.style.display = "none";
+        const mem = document.getElementById("mh-member"), usr = document.getElementById("mh-user");
+        if (mem) mem.style.display = logged ? "none" : "";
+        if (usr) usr.style.display = logged ? "" : "none";
+        if (logged) {
+          const set = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
+          set("mh-av", el => { el.innerHTML = _avatarInner(); });
+          set("mh-user-name", el => { el.textContent = getUserDisplayName(); });
+          set("mh-user-email", el => { el.textContent = currentUserEmail || ""; });
+          set("mh-cnt-favs", el => { el.textContent = getFavs().length || ""; });
+          set("mh-cnt-list", el => { el.textContent = getWatchlist().length || ""; });
+        }
+        ["mh-menu", "mh-menu-ov", "mh-burger"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("open"); });
+        const h = document.querySelector(".header-top"); if (h) h.classList.add("mh-open");
+        const b = document.getElementById("mh-burger"); if (b) b.setAttribute("aria-expanded", "true");
+      }
+      function closeMhMenu() {
+        ["mh-menu", "mh-menu-ov", "mh-burger"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove("open"); });
+        const h = document.querySelector(".header-top"); if (h) h.classList.remove("mh-open");
+        const b = document.getElementById("mh-burger"); if (b) b.setAttribute("aria-expanded", "false");
+        ["genre", "country"].forEach(k => {
+          const sub = document.getElementById("mh-sub-" + k), ex = document.getElementById("mh-exp-" + k);
+          if (sub) sub.classList.remove("open"); if (ex) ex.classList.remove("exp");
+        });
+        const ul = document.getElementById("mh-user-list"), uc = document.getElementById("mh-user-card");
+        if (ul) ul.classList.remove("open"); if (uc) uc.classList.remove("open");
+      }
+      function mhUserToggle() {
+        const ul = document.getElementById("mh-user-list"), uc = document.getElementById("mh-user-card");
+        if (!ul) return;
+        const open = !ul.classList.contains("open");
+        ul.classList.toggle("open", open); if (uc) uc.classList.toggle("open", open);
+      }
+      function mhMenuExpand(kind) {
+        const sub = document.getElementById("mh-sub-" + kind), ex = document.getElementById("mh-exp-" + kind);
+        if (!sub) return;
+        const willOpen = !sub.classList.contains("open");
+        ["genre", "country"].forEach(k => {
+          const s2 = document.getElementById("mh-sub-" + k), e2 = document.getElementById("mh-exp-" + k);
+          if (s2) s2.classList.remove("open"); if (e2) e2.classList.remove("exp");
+        });
+        if (!willOpen) return;
+        // Danh sách lấy từ bộ lọc có sẵn của trang -> luôn khớp với dữ liệu hiện tại
+        const sel = document.getElementById(kind === "genre" ? "f-genre" : "f-country");
+        if (!sub.dataset.built && sel) {
+          sub.innerHTML = Array.from(sel.options).filter(o => o.value).map(o =>
+            `<button class="mh-chip" type="button" onclick="mhMenuGo('${kind}','${o.value}')">${escHtml(o.textContent.trim())}</button>`).join("");
+          sub.dataset.built = "1";
+        }
+        sub.classList.add("open"); if (ex) ex.classList.add("exp");
+      }
+      /* ===== DESKTOP: menu xổ xuống Thể Loại / Quốc Gia (lấy danh sách từ bộ lọc có sẵn) ===== */
+      function _buildNavDD(kind) {
+        const panel = document.getElementById("nav-dd-panel-" + kind);
+        const sel = document.getElementById(kind === "genre" ? "f-genre" : "f-country");
+        if (!panel || !sel || panel.dataset.built) return;
+        panel.innerHTML = Array.from(sel.options).filter(o => o.value).map(o =>
+          `<button class="nav-dd-item" type="button" onclick="pickNavDD('${kind}','${o.value}')">${escHtml(o.textContent.trim())}</button>`).join("");
+        panel.dataset.built = "1";
+      }
+      function openNavDD(kind) {
+        closeNavDD();
+        _buildNavDD(kind);
+        const dd = document.getElementById("nav-dd-" + kind); if (dd) dd.classList.add("open");
+      }
+      function closeNavDD() { document.querySelectorAll(".nav-dd.open").forEach(el => el.classList.remove("open")); }
+      function toggleNavDD(kind) {
+        const dd = document.getElementById("nav-dd-" + kind);
+        if (dd && dd.classList.contains("open")) closeNavDD(); else openNavDD(kind);
+      }
+      function pickNavDD(kind, val) {
+        const trigger = document.querySelector("#nav-dd-" + kind + " .nav-link");
+        closeNavDD();
+        setNav(trigger);
+        if (kind === "genre") filterByGenre(val); else filterByCountry(val);
+      }
+      document.addEventListener("click", function (e) { if (!e.target.closest(".nav-dd")) closeNavDD(); });
+      /* ===== END NAV DROPDOWN ===== */
+
+      function mhMenuGo(kind, arg) {
+        closeMhMenu();
+        if (kind === "home") { setNav(document.querySelector(".nav-link")); showHome(); }
+        else if (kind === "type") { setNav(null); filterByType(arg); }
+        else if (kind === "genre") { setNav(null); filterByGenre(arg); }
+        else if (kind === "country") { setNav(null); filterByCountry(arg); }
+        else if (kind === "account") { openMe("account"); }
+        else if (kind === "me") { openMe(arg); }
+        else if (kind === "logout") { doLogout(); }
+      }
+      document.addEventListener("keydown", e => { if (e.key === "Escape") closeMhMenu(); });
+      // Đổi sang giao diện máy tính -> đóng menu để không bị kẹt lớp phủ
+      window.matchMedia("(min-width: 901px) and (min-height: 501px)").addEventListener("change", closeMhMenu);
+      var _mpillKey = "home";
+      function setMPills(key) {
+        _mpillKey = key;
+        const items = [["home", "Đề xuất"], ["series", "Phim Bộ"], ["movie", "Phim Lẻ"]];
+        const html = items.map(([k, label]) =>
+          `<a class="mpill${k === key ? " active" : ""}" onclick="event.preventDefault();mpillGo('${k}')">${label}</a>`).join("");
+        document.querySelectorAll("[data-mpills]").forEach(el => { el.innerHTML = html; });
+      }
+      function mpillGo(k) {
+        if (k === "home") { setNav(document.querySelector(".nav-link")); showHome(); }
+        else { filterByType(k); }
+      }
+      var _mhSwiped = 0;
+      function mhGo(i) {
+        const n = heroMs.length; if (!n) return;
+        heroI = ((i % n) + n) % n;
+        renderHero();
+        resetTimer();
+      }
+      function mhTap(i) {
+        if (Date.now() - _mhSwiped < 350) return; // vừa vuốt xong thì bỏ qua click
+        if (i === heroI) playHero(); else mhGo(i);
+      }
+      // Kéo chuột (hoặc vuốt) trên hero desktop để chuyển phim
+      function _bindHeroDrag() {
+        const hero = document.getElementById("hero");
+        if (!hero || hero._drag) return; hero._drag = 1;
+        hero.classList.add("drag-ready");
+        let x0 = null, y0 = 0, dx = 0, id = null, moved = false;
+        const content = () => hero.querySelector(".hero-content");
+        const reset = (animate) => {
+          const hc = content(); if (!hc) return;
+          hc.style.transition = animate ? "transform .3s ease, opacity .3s ease" : "none";
+          hc.style.transform = ""; hc.style.opacity = "";
+        };
+        hero.addEventListener("pointerdown", (e) => {
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          if (e.target.closest("button, a, input, textarea, select, .hero-thumbs, .hero-dots")) return;
+          x0 = e.clientX; y0 = e.clientY; dx = 0; id = e.pointerId; moved = false;
+        });
+        hero.addEventListener("pointermove", (e) => {
+          if (x0 == null || e.pointerId !== id) return;
+          const ddx = e.clientX - x0, ddy = e.clientY - y0;
+          if (!moved) {
+            if (Math.abs(ddx) < 8 || Math.abs(ddx) < Math.abs(ddy)) return; // chưa đủ để coi là kéo ngang
+            moved = true; hero.classList.add("dragging");
+            try { hero.setPointerCapture(id); } catch (_) {}
+          }
+          dx = ddx;
+          const hc = content();
+          if (hc) {
+            hc.style.transition = "none";
+            hc.style.transform = `translateX(${dx * 0.35}px)`;
+            hc.style.opacity = String(1 - Math.min(Math.abs(dx) / 500, 0.6));
+          }
+        });
+        const end = (e, cancelled) => {
+          if (x0 == null || (e && e.pointerId !== id)) return;
+          const d = dx, wasMoved = moved;
+          x0 = null; moved = false; dx = 0;
+          hero.classList.remove("dragging");
+          try { hero.releasePointerCapture(id); } catch (_) {}
+          if (!wasMoved) return;
+          reset(true);
+          if (!cancelled && Math.abs(d) > 60) mhGo(heroI + (d < 0 ? 1 : -1)); // kéo trái -> phim kế, kéo phải -> phim trước
+        };
+        hero.addEventListener("pointerup", (e) => end(e, false));
+        hero.addEventListener("pointercancel", (e) => end(e, true));
+        hero.addEventListener("dragstart", (e) => e.preventDefault()); // chặn kéo ảnh mặc định của trình duyệt
+      }
+      _bindHeroDrag();
+
+      function _bindMhSwipe(el) {
+        if (el._sw) return; el._sw = 1;
+        let x0 = null;
+        el.addEventListener("pointerdown", e => { x0 = e.clientX; });
+        el.addEventListener("pointerup", e => {
+          if (x0 == null) return;
+          const dx = e.clientX - x0; x0 = null;
+          if (Math.abs(dx) > 40) { _mhSwiped = Date.now(); mhGo(heroI + (dx < 0 ? 1 : -1)); }
+        });
+        el.addEventListener("pointercancel", () => { x0 = null; });
       }
 
       function toggleDpDesc() {
@@ -4663,6 +5497,7 @@
         bPage = 1;
       const PER = 20;
       function showBrowse(t, keepList) {
+        setMPills(null);
         if (!keepList) { bList = [...MOVIES]; }
         bPage = 1;
         hidePgs();
@@ -4672,19 +5507,14 @@
         // Người dùng đã chuyển sang trang duyệt tìm → tự động cuộn lại hero.
         resetTimer();
         // Reset filter UI nếu không giữ list
-        if (!keepList) {
-          ["f-country","f-genre","f-year","f-type"].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = "";
-          });
-          const sortEl = document.getElementById("f-sort");
-          if (sortEl) sortEl.value = "default";
-        }
+        if (!keepList) { resetFilterFields(); _browseQuery = ""; }
+        fpSync(); fpClose(false);
         renderBrowse();
       }
       function showHome() {
         hidePgs();
         document.getElementById("page-home").style.display = "block";
+        setMPills("home");
         // Explicit scroll to top when navigating to home
         requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
       }
@@ -4707,59 +5537,152 @@
         // Restore ngay lập tức để browser không auto-reset về 0
         window.scrollTo({ top: _savedScroll, behavior: "instant" });
       }
+      let _browseQuery = ""; // từ khoá tìm kiếm đang áp dụng (nếu đang ở kết quả tìm kiếm)
+      function resetFilterFields() {
+        ["f-country","f-genre","f-year","f-type","f-lang"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+        const so = document.getElementById("f-sort"); if (so) so.value = "default";
+      }
+      function _setField(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
       function filterByGenre(g) {
-        bList = MOVIES.filter((m) => {
-          const genres = (m.genre || "").split(",").map(x => x.trim().toLowerCase());
-          return genres.includes(g.toLowerCase());
-        });
-        bPage = 1;
-        const genreEl = document.getElementById("f-genre");
-        if (genreEl) genreEl.value = g;
+        resetFilterFields(); _browseQuery = "";
+        _setField("f-genre", g);
+        bList = computeFiltered(); bPage = 1;
         showBrowse(GL(g), true);
       }
       function filterByType(t) {
-        bList = MOVIES.filter((m) => m.type === t);
-        bPage = 1;
-        const typeEl = document.getElementById("f-type");
-        if (typeEl) typeEl.value = t;
+        resetFilterFields(); _browseQuery = "";
+        _setField("f-type", t);
+        bList = computeFiltered(); bPage = 1;
         showBrowse(t === "movie" ? "Phim Lẻ" : "Phim Bộ", true);
+        setMPills(t);
       }
       function filterByCountry(co) {
-        bList = MOVIES.filter((m) => m.country === co)
-          .sort((a, b) => (b.year || 0) - (a.year || 0));
-        bPage = 1;
-        const countryEl = document.getElementById("f-country");
-        if (countryEl) countryEl.value = co;
+        resetFilterFields(); _browseQuery = "";
+        _setField("f-country", co);
+        bList = computeFiltered(); bPage = 1;
         showBrowse(CL(co), true);
       }
-      function applyFilter() {
-        const co = document.getElementById("f-country").value,
-          ge = document.getElementById("f-genre").value,
-          yr = document.getElementById("f-year").value,
-          ty = document.getElementById("f-type").value,
-          so = document.getElementById("f-sort").value,
-          sq = document.getElementById("f-search") ? normalizeStr(document.getElementById("f-search").value) : "";
-        bList = MOVIES.filter((m) => {
+      // Phân loại ngôn ngữ từ trường "sub" của phim
+      function _langOf(m) {
+        const t = normalizeStr(m.sub || "");
+        return { sub: /phu de|vietsub|sub/.test(t), tm: /thuyet minh/.test(t), dub: /long tieng/.test(t) };
+      }
+      function computeFiltered() {
+        const v = id => { const el = document.getElementById(id); return el ? el.value : ""; };
+        const co = v("f-country"), ge = v("f-genre"), yr = v("f-year").trim(),
+              ty = v("f-type"), lg = v("f-lang"), so = v("f-sort") || "default";
+        const q = _browseQuery;
+        const list = MOVIES.filter((m) => {
           if (co && m.country !== co) return false;
-          // Genre: hỗ trợ phim có nhiều thể loại (vd: "action,romance")
           if (ge) {
             const genres = (m.genre || "").split(",").map(x => x.trim().toLowerCase());
             if (!genres.includes(ge.toLowerCase())) return false;
           }
           if (ty && m.type !== ty) return false;
-          if (yr === "2021" && parseInt(m.year) > 2021) return false;
-          if (yr && yr !== "2021" && m.year !== yr) return false;
+          if (yr && String(m.year) !== yr) return false;
+          if (lg && !_langOf(m)[lg]) return false;
+          if (q) {
+            const hay = normalizeStr(m.title) + " " + normalizeStr(m.titleEn || "") + " " + normalizeStr(m.description || m.desc || "");
+            if (!hay.includes(q)) return false;
+          }
           return true;
         });
-        if (so === "rating")
-          bList.sort((a, b) => parseFloat(b.rating) - parseFloat(a.rating));
-        else if (so === "year")
-          bList.sort((a, b) => parseInt(b.year) - parseInt(a.year));
-        else // default: mới nhất (theo id hoặc năm)
-          bList.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0));
+        const t = m => m.createdAt ? Date.parse(m.createdAt) || 0 : 0;
+        if (so === "rating") list.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
+        else if (so === "updated") list.sort((a, b) => t(b) - t(a));
+        else list.sort((a, b) => ((parseInt(b.year) || 0) - (parseInt(a.year) || 0)) || (t(b) - t(a)));
+        return list;
+      }
+      function applyFilter() {
+        bList = computeFiltered();
         bPage = 1;
+        fpSync();
         renderBrowse();
       }
+
+      /* ===== BỘ LỌC KIỂU CHỢPHIM (chip) ===== */
+      const FP_IDS = ["f-country", "f-type", "f-genre", "f-lang", "f-year", "f-sort"];
+      const FP_DEFAULT = { "f-sort": "default" };
+      let _fp = {}; // lựa chọn đang chọn (chưa áp dụng)
+      function fpBuild() {
+        document.querySelectorAll("#fp-panel [data-fp]").forEach(box => {
+          const id = box.dataset.fp;
+          let items = [];
+          if (id === "f-year") {
+            const cy = new Date().getFullYear();
+            items.push(["", "Tất cả"]);
+            for (let y = cy; y > cy - 7; y--) items.push([String(y), String(y)]);
+          } else {
+            const sel = document.getElementById(id);
+            if (!sel) return;
+            items = Array.from(sel.options).map(o => [o.value, o.value === "" ? "Tất cả" : o.textContent.trim()]);
+            if (id === "f-sort") items = items.map(x => x);
+          }
+          box.innerHTML = items.map(([val, label]) =>
+            `<button type="button" class="fp-chip" data-val="${escHtml(val)}" onclick="fpPick('${id}',this.dataset.val)">${escHtml(label)}</button>`).join("");
+        });
+        fpSync();
+      }
+      function fpPaint() {
+        document.querySelectorAll("#fp-panel [data-fp]").forEach(box => {
+          const cur = _fp[box.dataset.fp] || "";
+          box.querySelectorAll(".fp-chip").forEach(c => c.classList.toggle("active", c.dataset.val === cur));
+        });
+        const yb = document.getElementById("fp-year-box");
+        if (yb && document.activeElement !== yb) {
+          const y = _fp["f-year"] || "";
+          const isChip = !!document.querySelector('#fp-panel [data-fp="f-year"] .fp-chip[data-val="' + y + '"]');
+          yb.value = (y && !isChip) ? y : "";
+        }
+      }
+      function fpPick(id, val) {
+        _fp[id] = val;
+        if (id === "f-year") { const yb = document.getElementById("fp-year-box"); if (yb) yb.value = ""; }
+        fpPaint();
+      }
+      function fpYearTyped(v) {
+        v = v.replace(/\D/g, "").slice(0, 4);
+        const yb = document.getElementById("fp-year-box"); if (yb) yb.value = v;
+        _fp["f-year"] = v.length === 4 ? v : "";
+        document.querySelectorAll('#fp-panel [data-fp="f-year"] .fp-chip').forEach(c => c.classList.toggle("active", !v && c.dataset.val === ""));
+        if (v.length === 4) document.querySelectorAll('#fp-panel [data-fp="f-year"] .fp-chip').forEach(c => c.classList.toggle("active", c.dataset.val === v));
+      }
+      // Đọc trạng thái đã áp dụng (các ô ẩn) -> chip + nhãn đếm
+      function fpSync() {
+        FP_IDS.forEach(id => { const el = document.getElementById(id); _fp[id] = el ? el.value : (FP_DEFAULT[id] || ""); });
+        fpPaint();
+        const n = FP_IDS.filter(id => (_fp[id] || "") !== (FP_DEFAULT[id] || "")).length + (_browseQuery ? 0 : 0);
+        const badge = document.getElementById("fp-badge");
+        if (badge) { badge.textContent = n || ""; badge.classList.toggle("on", n > 0); }
+        const clr = document.getElementById("fp-clear");
+        if (clr) clr.style.display = n > 0 ? "" : "none";
+      }
+      function fpToggle() {
+        const p = document.getElementById("fp-panel");
+        if (!p) return;
+        if (p.classList.contains("open")) fpClose(true); else { fpSync(); p.classList.add("open"); const t = document.getElementById("fp-toggle"); if (t) { t.classList.add("open"); t.setAttribute("aria-expanded", "true"); } }
+      }
+      function fpClose(discard) {
+        const p = document.getElementById("fp-panel"); if (p) p.classList.remove("open");
+        const t = document.getElementById("fp-toggle"); if (t) { t.classList.remove("open"); t.setAttribute("aria-expanded", "false"); }
+        if (discard) fpSync();
+      }
+      function fpApply() {
+        FP_IDS.forEach(id => { const el = document.getElementById(id); if (el) el.value = _fp[id] || (FP_DEFAULT[id] || ""); });
+        fpClose(false);
+        applyFilter();
+        const g = document.getElementById("browse-grid");
+        if (g) { const top = g.getBoundingClientRect().top + window.scrollY - 110; window.scrollTo({ top: Math.max(0, top), behavior: "smooth" }); }
+      }
+      function fpReset() {
+        resetFilterFields();
+        fpSync();
+        const yb = document.getElementById("fp-year-box"); if (yb) yb.value = "";
+        fpClose(false);
+        applyFilter();
+      }
+      fpBuild();
+      /* ===== END BỘ LỌC ===== */
       function renderBrowse() {
         const sl = bList.slice((bPage - 1) * PER, bPage * PER);
         document.getElementById("browse-grid").innerHTML = sl.length
@@ -4821,13 +5744,10 @@
           : ((desktopInput && desktopInput.value) || (mobileInput && mobileInput.value) || "")).trim();
         if (!raw) return;
         const q = normalizeStr(raw);
-        bList = MOVIES.filter((m) => {
-          const title = normalizeStr(m.title);
-          const titleEn = normalizeStr(m.titleEn || "");
-          const desc = normalizeStr(m.description || m.desc || "");
-          return title.includes(q) || titleEn.includes(q) || desc.includes(q);
-        });
-        // Sort: exact title match first, then starts with, then contains
+        resetFilterFields();
+        _browseQuery = q;
+        bList = computeFiltered();
+        // Ưu tiên: trùng tên chính xác -> bắt đầu bằng -> chứa
         bList.sort((a, b) => {
           const aTitle = normalizeStr(a.title);
           const bTitle = normalizeStr(b.title);
@@ -4968,6 +5888,10 @@
 
       function openPlayer(id) {
         const m = MOVIES.find((x) => x.id === id);
+        if (m && m._imgReady === false && !m._imgTried) {
+          fetchMovieImages([id]).then(function () { _patchCardImages(m); openPlayer(id); });
+          return;
+        }
         if (m && m.type === "series" && m._epLoaded === false) {
           toast("⏳ Đang tải danh sách tập...");
           ensureEpisodes(m).then(() => {
@@ -6261,7 +7185,6 @@
       }
       // Ẩn loading screen (bản cũ)
       function hideLoadingScreen() {
-        if (window.__npHold) return; // đang khôi phục trang phim: giữ màn tải tới khi router nhả
         const ls = document.getElementById("loading-screen");
         if (ls) {
           ls.style.pointerEvents = "none";
@@ -6270,23 +7193,48 @@
         }
       }
 
-      /* ===== BẢN LƯU DANH SÁCH PHIM (hiện trang tức thì ở lần mở sau) ===== */
-      const _MV_CACHE_KEY = "np_movies_cache_v1";
+      /* ===== BẢN LƯU DANH SÁCH PHIM (IndexedDB: không bị giới hạn ~5MB như localStorage) =====
+         Trước đây bản lưu nằm trong localStorage và bị BỎ nếu > 3,5MB (vd. có ảnh base64) nên
+         lần nào mở web cũng tải lại toàn bộ bảng phim. IndexedDB chứa được hàng trăm MB. */
+      const _MV_DB_KEY = "movies_v2";
       const _HERO_CACHE_KEY = "np_hero_cache_v1";
-      function _readMoviesCache() {
+      const _IMG_STALE_MS = 12 * 3600 * 1000; // sau 12h thì tải lại ảnh ngầm để bắt thay đổi
+      let _cacheImgT = 0;
+      function _idbOpen() {
+        return new Promise(function (res, rej) {
+          const r = indexedDB.open("nhotphim", 1);
+          r.onupgradeneeded = function () { r.result.createObjectStore("kv"); };
+          r.onsuccess = function () { res(r.result); };
+          r.onerror = function () { rej(r.error); };
+        });
+      }
+      async function _idbGet(k) {
         try {
-          const o = JSON.parse(localStorage.getItem(_MV_CACHE_KEY) || "null");
-          if (o && Array.isArray(o.d) && o.d.length) return o.d;
+          const db = await _idbOpen();
+          return await new Promise(function (res) {
+            const q = db.transaction("kv").objectStore("kv").get(k);
+            q.onsuccess = function () { res(q.result || null); };
+            q.onerror = function () { res(null); };
+          });
+        } catch (e) { return null; }
+      }
+      async function _idbSet(k, v) {
+        try {
+          const db = await _idbOpen();
+          await new Promise(function (res) {
+            const tx = db.transaction("kv", "readwrite");
+            tx.objectStore("kv").put(v, k);
+            tx.oncomplete = tx.onerror = tx.onabort = function () { res(); };
+          });
         } catch (e) {}
+      }
+      async function _readMoviesCache() {
+        try { localStorage.removeItem("np_movies_cache_v1"); } catch (e) {}
+        const o = await _idbGet(_MV_DB_KEY);
+        if (o && Array.isArray(o.d) && o.d.length) { _cacheImgT = o.imgT || 0; return o; }
         return null;
       }
-      function _writeMoviesCache(list) {
-        try {
-          const str = JSON.stringify({ t: Date.now(), d: list });
-          if (str.length < 3500000) localStorage.setItem(_MV_CACHE_KEY, str); // quá lớn (vd ảnh base64) thì thôi
-          else localStorage.removeItem(_MV_CACHE_KEY);
-        } catch (e) { try { localStorage.removeItem(_MV_CACHE_KEY); } catch (_) {} }
-      }
+      function _writeMoviesCache(list) { return _idbSet(_MV_DB_KEY, { t: Date.now(), imgT: _cacheImgT, d: list }); }
       function _readHeroCache() {
         try {
           const a = JSON.parse(localStorage.getItem(_HERO_CACHE_KEY) || "null");
@@ -6299,20 +7247,153 @@
           m.embedUrl, m.embedUrl2, m.poster ? m.poster.length : 0, m.backdrop ? m.backdrop.length : 0,
           m.logo ? m.logo.length : 0, m.createdAt].join("|")).join("\n");
       }
+      // Lưu URL ảnh hero đầu tiên để <head> tải sớm ở lần mở sau (chỉ khi là URL, không phải base64)
+      function _saveHeroPre() {
+        try {
+          const m = heroMs[0]; if (!m) return;
+          const d = _heroBgUrl(m), p = m.poster || m.backdrop || "";
+          if (/^https?:/.test(d) && /^https?:/.test(p)) localStorage.setItem("np_hero_pre_v1", JSON.stringify({ d: d, m: p }));
+          else localStorage.removeItem("np_hero_pre_v1");
+        } catch (e) {}
+      }
+
+      /* ===== TẢI ẢNH THEO LÔ (poster / backdrop / logo) =====
+         Dữ liệu phim (nhẹ) về trước -> hiện trang; ảnh hero về ngay sau; ảnh các phim còn lại
+         tải nền theo lô nhỏ, thẻ nào có ảnh thì ảnh hiện lên ngay tại chỗ. Không bỏ ảnh nào. */
+      let _imgCols = "poster,backdrop,logo";
+      let _imgLoadRun = 0, _imgBytes = 0;
+      function _applyImgRow(m, r) {
+        const prev = (m.poster || "") + "|" + (m.backdrop || "") + "|" + (m.logo || "");
+        m.poster = r.poster || "";
+        m.backdrop = _smallImg(r.backdrop, "w1280") || null;
+        m.backdropHD = r.backdrop || null; // bản gốc (chưa thu nhỏ) cho hero
+        m.logo = r.logo || null;
+        m._imgReady = true;
+        // true nếu ảnh khác với bản đang hiển thị (admin vừa đổi ảnh) -> hero cần vẽ lại
+        m._imgDiff = prev !== (m.poster + "|" + (m.backdrop || "") + "|" + (m.logo || ""));
+      }
+      async function fetchMovieImages(ids) {
+        const byId = new Map(MOVIES.map(m => [String(m.id), m]));
+        const want = (ids || []).filter(id => { const m = byId.get(String(id)); return m && m._imgReady === false; });
+        if (!want.length) return [];
+        want.forEach(id => { byId.get(String(id))._imgTried = true; });
+        const t0 = performance.now();
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const res = await sbFetch(`${SB_URL}/rest/v1/${SB_TABLE}?select=id,${_imgCols}&id=in.(${want.join(",")})`, { headers: SB_HEADERS, cache: "no-store" });
+            if (res.ok) {
+              const text = await res.text();
+              _imgBytes += text.length;
+              const rows = JSON.parse(text);
+              const done = [];
+              rows.forEach(r => { const m = byId.get(String(r.id)); if (m) { _applyImgRow(m, r); done.push(m.id); } });
+              console.info("[perf] ảnh: " + done.length + " phim, " + Math.round(text.length / 1024) + " KB, " + Math.round(performance.now() - t0) + " ms");
+              _onImagesLoaded(done);
+              return done;
+            }
+            if (res.status === 400 && _imgCols.indexOf("logo") >= 0) { _imgCols = "poster,backdrop"; continue; } // bảng chưa có cột logo
+            break;
+          } catch (e) { console.warn("Tải ảnh phim lỗi:", e); break; }
+        }
+        return [];
+      }
+      function _patchCardImages(m) {
+        const src = m.backdrop || m.poster || "";
+        if (!src) return;
+        document.querySelectorAll('img[data-mid="' + m.id + '"]').forEach(function (img) {
+          if (img.getAttribute("src") !== src) { img.style.display = ""; img.src = src; }
+          const ph = img.nextElementSibling;
+          if (ph && ph.classList && ph.classList.contains("mc-poster-ph")) ph.style.display = "none";
+        });
+      }
+      let _heroImgTimer = null;
+      function _onImagesLoaded(ids) {
+        const byId = new Map(MOVIES.map(m => [String(m.id), m]));
+        (ids || []).forEach(id => { const m = byId.get(String(id)); if (m) _patchCardImages(m); });
+        const isHero = (ids || []).some(id => {
+          const m = byId.get(String(id));
+          if (!m || !m._imgDiff) return false; // ảnh không đổi -> khỏi vẽ lại hero (tránh chớp)
+          return heroMs.some(h => String(h.id) === String(id)) || (HERO_SELECTION || []).some(sel => String(sel.id) === String(id));
+        });
+        if (isHero) {
+          clearTimeout(_heroImgTimer);
+          _heroImgTimer = setTimeout(function () {
+            try {
+              const cur = heroMs[heroI] && heroMs[heroI].id;
+              buildHero();
+              const ni = heroMs.findIndex(h => h.id === cur);
+              heroI = ni >= 0 ? ni : Math.min(heroI, Math.max(0, heroMs.length - 1));
+              renderHero(); _saveHeroPre();
+            } catch (e) { console.warn("[hero] cập nhật ảnh:", e); }
+          }, 80);
+        }
+      }
+      // Tải ảnh còn thiếu: hero trước, rồi theo thứ tự thẻ đang hiện trên trang (trên xuống dưới), rồi phần còn lại
+      async function loadImagesInBackground(firstIds) {
+        const run = ++_imgLoadRun;
+        const byId = new Map(MOVIES.map(m => [String(m.id), m]));
+        const seen = new Set(), order = [];
+        const push = function (id) { const k = String(id); if (!seen.has(k) && byId.has(k)) { seen.add(k); order.push(byId.get(k)); } };
+        (firstIds || []).forEach(push);
+        document.querySelectorAll("img[data-mid]").forEach(el => push(el.dataset.mid));
+        MOVIES.forEach(m => push(m.id));
+        const need = order.filter(m => m._imgReady === false).map(m => m.id);
+        const BATCH = 10, CONC = 3, batches = [];
+        for (let i = 0; i < need.length; i += BATCH) batches.push(need.slice(i, i + BATCH));
+        let idx = 0;
+        const t0 = performance.now(); _imgBytes = 0;
+        const worker = async function () {
+          while (idx < batches.length && run === _imgLoadRun) { await fetchMovieImages(batches[idx++]); }
+        };
+        await Promise.all(Array.from({ length: CONC }, worker));
+        if (run !== _imgLoadRun) return;
+        if (need.length) console.info("[perf] tải xong ảnh nền: " + need.length + " phim, " + Math.round(_imgBytes / 1024) + " KB, " + Math.round(performance.now() - t0) + " ms");
+        if (MOVIES.every(m => m._imgReady !== false)) _cacheImgT = Date.now();
+        _writeMoviesCache(MOVIES);
+        try { renderContinueWatching(); } catch (e) {}
+      }
+      function _heroIdList() {
+        const a = (HERO_SELECTION || []).map(s => s.id);
+        heroMs.forEach(h => a.push(h.id));
+        return a;
+      }
+      // Ghép ảnh đã có (từ bản lưu) vào danh sách nhẹ mới; ảnh cũ quá 12h thì đánh dấu tải lại ngầm
+      function _mergeImages(fresh, old) {
+        const om = new Map((old || []).map(m => [String(m.id), m]));
+        const stale = (Date.now() - _cacheImgT) > _IMG_STALE_MS;
+        // Phim trong hero: luôn tải lại ảnh từ server mỗi lần mở web để bắt kịp khi admin đổi ảnh
+        const heroIds = new Set(_heroIdList().map(String));
+        fresh.forEach(function (f) {
+          if (f._imgReady) return;
+          const o = om.get(String(f.id));
+          if (o && (o.poster || o.backdrop || o.logo || o._imgReady)) {
+            f.poster = o.poster || ""; f.backdrop = o.backdrop || null; f.backdropHD = o.backdropHD || null; f.logo = o.logo || null;
+            f._imgReady = !!o._imgReady && !stale && !heroIds.has(String(f.id));
+          }
+        });
+        return fresh;
+      }
       // Sau khi đã hiện trang từ bản lưu: chờ dữ liệu mới từ mạng, nếu khác thì vẽ lại.
       function _refreshFromNetwork(moviesP, heroP, heroUsed) {
         Promise.all([moviesP, heroP]).then(function (res) {
           const fresh = res[0];
           try { localStorage.setItem(_HERO_CACHE_KEY, JSON.stringify(HERO_SELECTION || [])); } catch (e) {}
           if (!fresh || !fresh.length) return; // lỗi mạng: giữ nguyên bản đang hiển thị
-          _writeMoviesCache(fresh);
+          _mergeImages(fresh, MOVIES);
           const heroNow = JSON.stringify(HERO_SELECTION || []);
-          if (_moviesSig(fresh) === _moviesSig(MOVIES) && heroNow === heroUsed) return;
-          MOVIES = fresh;
-          uploadedMovies = MOVIES.filter(m => m.uploaded);
-          [buildHero, renderHero, renderRows, renderContinueWatching].forEach(function (fn) {
-            try { fn(); } catch (e) { console.warn("[refresh] " + fn.name + ":", e); }
-          });
+          const changed = _moviesSig(fresh) !== _moviesSig(MOVIES) || heroNow !== heroUsed;
+          if (changed) {
+            MOVIES = fresh;
+            uploadedMovies = MOVIES.filter(m => m.uploaded);
+            [buildHero, renderHero, renderRows, renderContinueWatching].forEach(function (fn) {
+              try { fn(); } catch (e) { console.warn("[refresh] " + fn.name + ":", e); }
+            });
+          } else {
+            const om = new Map(MOVIES.map(m => [String(m.id), m]));
+            fresh.forEach(function (f) { if (f._imgReady === false) { const o = om.get(String(f.id)); if (o) o._imgReady = false; } });
+          }
+          if (MOVIES.some(m => m._imgReady === false)) loadImagesInBackground(_heroIdList());
+          else if (changed) _writeMoviesCache(MOVIES);
         }).catch(function (e) { console.warn("Cập nhật ngầm danh sách phim lỗi:", e); });
       }
       /* ===== END BẢN LƯU DANH SÁCH PHIM ===== */
@@ -6324,37 +7405,48 @@
         if (ls) { ls.style.display = "flex"; ls.classList.remove("hide"); }
         const safetyTimer = setTimeout(hideLoadingScreen, 8000);
         try {
-          // Bắt đầu tải phim + hero SONG SONG ngay (trước đây chạy nối đuôi nhau).
+          // Bắt đầu tải phim (bản nhẹ) + hero SONG SONG ngay.
           const moviesP = loadFromStorage();
           const heroP = loadHeroSelection();
-          // Có bản lưu từ lần trước -> dùng ngay để hiện trang tức thì, rồi cập nhật ngầm.
-          const cachedMovies = _readMoviesCache();
+          // Có bản lưu từ lần trước (IndexedDB, đã gồm ảnh) -> hiện trang tức thì, rồi cập nhật ngầm.
+          const cache = await _readMoviesCache();
           const cachedHero = _readHeroCache();
           let loaded;
-          if (cachedMovies) { loaded = cachedMovies; }
-          else { loaded = await moviesP; if (!loaded.length) { await new Promise(r => setTimeout(r, 1500)); loaded = await loadFromStorage(); } if (loaded.length) _writeMoviesCache(loaded); }
+          if (cache) { loaded = cache.d; }
+          else { loaded = await moviesP; if (!loaded.length) { await new Promise(r => setTimeout(r, 1500)); loaded = await loadFromStorage(); } }
           if (loaded.length) {
             MOVIES = loaded;
             uploadedMovies = MOVIES.filter(m => m.uploaded);
           }
-          if (cachedMovies && cachedHero) { HERO_SELECTION = cachedHero; }
+          if (cache && cachedHero) { HERO_SELECTION = cachedHero; }
           else { await heroP; } // ← danh sách hero do admin tự chọn
           const _heroUsed = JSON.stringify(HERO_SELECTION || []);
-          if (cachedMovies) _refreshFromNetwork(moviesP, heroP, _heroUsed);
+          if (cache) _refreshFromNetwork(moviesP, heroP, _heroUsed);
           buildHero();
+          // Ảnh hero tải TRƯỚC (chỉ vài dòng nhỏ) để lần vẽ đầu tiên đã có ảnh + logo; chờ tối đa 4s
+          if (heroMs.some(h => h._imgReady === false)) {
+            await Promise.race([fetchMovieImages(heroMs.map(h => h.id)), new Promise(r => setTimeout(r, 4000))]);
+            buildHero();
+          }
           heroI = 0;
-          renderHero();
+          const _firstHeroReady = renderHero(); // Promise: xong khi ảnh nền + logo hero đầu đã lên hình
           resetTimer();
           renderRows();
           setupScrollArrows(); // Nút trượt trái/phải cho các hàng phim (bản web)
           renderContinueWatching(); // Hiển thị mục xem tiếp (lưu local trình duyệt)
-          // (Đã bỏ tải tập hàng loạt lúc khởi động — tập được tải theo từng phim khi mở player/sửa phim)
+          _saveHeroPre();
+          // Ảnh các phim còn lại tải nền (thẻ nào có ảnh thì hiện ngay tại chỗ)
+          if (!cache && MOVIES.some(m => m._imgReady === false)) loadImagesInBackground(_heroIdList());
+          else if (!cache) _writeMoviesCache(MOVIES);
           syncAvatarFromSupabase();    // Đồng bộ avatar từ Supabase
           refreshUserMenu();
           UD.loadRemote().then(function () { onUserDataChanged(); }).catch(function () {});
           // Fix mobile layout offset
           fixMobileOffset();
           window.addEventListener('resize', fixMobileOffset);
+          // Giữ màn hình loading cho tới khi hero đầu tiên đã vẽ xong (không để lộ chữ "Đang tải..." / hero trống phía sau)
+          await _firstHeroReady;
+          await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         } catch(e) {
           console.error("Lỗi khởi động:", e);
         } finally {
@@ -6415,9 +7507,11 @@
         if (!headerTop) return;
         setTimeout(() => {
           const headerH = headerTop.getBoundingClientRect().height;
-          const navH = nav ? nav.getBoundingClientRect().height : 40;
+          const navInHeader = !!(nav && headerTop.contains(nav)); // menu đã nằm chung hàng với header
+          const navH = nav && !navInHeader ? nav.getBoundingClientRect().height : 0;
           const totalOffset = headerH + navH;
-          if (nav) nav.style.top = headerH + 'px';
+          document.documentElement.style.setProperty('--hdr-h', headerH + 'px');
+          if (nav && !navInHeader) nav.style.top = headerH + 'px';
           if (hero) hero.style.marginTop = '0px';
           const mobileHero = document.getElementById('mobile-hero');
           if (mobileHero) mobileHero.style.paddingTop = totalOffset + 'px';
@@ -6788,6 +7882,5 @@
       // ===== END MOBILE KEYBOARD JUMP FIX =====
 
 </script>
-    <script src="router.js?v=5"></script>
   </body>
 </html>
