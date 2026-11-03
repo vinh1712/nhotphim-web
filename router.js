@@ -5,10 +5,11 @@
 
    Các đường dẫn:
      (không có đuôi)                      Trang chủ
-     #phim/<id>/<ten-phim>/tap-<n>/sv<k>  Đang xem một phim (tập n, server k: sv1 sv2 sv3 m3u8)
-     #/duyet-tim?loai=series&quoc-gia=kr&the-loai=action&nam=2025&sx=rating&trang=2
+     #phim/<ten-phim>/tap-<n>/sv<k>  Đang xem một phim (tập n, server k: sv1 sv2 sv3 m3u8)
+     #/duyet-tim?loai=series&quoc-gia=kr&the-loai=action&ngon-ngu=sub&nam=2025&sx=rating&trang=2
                                           Trang duyệt / lọc (mọi tham số đều tùy chọn)
-     #/tim-kiem/<tu-khoa>?trang=2         Kết quả tìm kiếm
+                                          ngon-ngu = sub | tm | dub ; sx = default | updated | rating
+     #/tim-kiem/<tu-khoa>?loai=...&trang=2  Kết quả tìm kiếm (có thể lọc thêm bằng các tham số trên)
      #/tai-khoan  #/yeu-thich  #/danh-sach  #/xem-tiep     Trang cá nhân
 
    Dùng hash nên chạy được trên GitHub Pages / Live Server (đường dẫn thật như
@@ -43,7 +44,7 @@
   var browseState = null;      // {q, f, page} của trang duyệt hiện tại
 
   var FILTERS = [
-    ["loai", "f-type"], ["quoc-gia", "f-country"], ["the-loai", "f-genre"], ["nam", "f-year"], ["sx", "f-sort"]
+    ["loai", "f-type"], ["quoc-gia", "f-country"], ["the-loai", "f-genre"], ["ngon-ngu", "f-lang"], ["nam", "f-year"], ["sx", "f-sort"]
   ];
   var ME_ROUTES = { "tai-khoan": "account", "yeu-thich": "favs", "danh-sach": "list", "xem-tiep": "continue" };
   var ME_PATHS = { account: "/tai-khoan", favs: "/yeu-thich", list: "/danh-sach", continue: "/xem-tiep" };
@@ -60,7 +61,21 @@
   function findMovie(idStr) {
     return (typeof MOVIES !== "undefined" ? MOVIES : []).find(function (x) { return String(x.id) === String(idStr); });
   }
-  // URL mới: #phim/414/ten-phim/tap-3 (không còn "/" sau dấu #). Link cũ #/phim/... vẫn đọc được.
+  // Tên phim trên URL: slug của tên; nếu trùng tên với phim khác thì thêm năm, vẫn trùng thì thêm id
+  function movieSlug(m) {
+    var all = typeof MOVIES !== "undefined" ? MOVIES : [], s = slug(m.title) || String(m.id);
+    var same = all.filter(function (x) { return slug(x.title) === s; });
+    if (same.length <= 1) return s;
+    var sy = m.year ? s + "-" + m.year : s;
+    if (m.year && all.filter(function (x) { return x.year === m.year && slug(x.title) === s; }).length <= 1) return sy;
+    return sy + "-" + m.id;
+  }
+  // Tìm phim theo tên trên URL (link cũ dùng id số vẫn đọc được)
+  function findMovieBySlug(sl) {
+    var all = typeof MOVIES !== "undefined" ? MOVIES : [];
+    return all.find(function (x) { return movieSlug(x) === sl; }) || findMovie(sl);
+  }
+  // URL mới: #phim/ten-phim/tap-3/sv1 (không còn "/" sau dấu #). Link cũ #/phim/... vẫn đọc được.
   function currentRoute() {
     var h = (location.hash || "").replace(/^#\/*/, "");
     return h ? "/" + h : "";
@@ -124,7 +139,7 @@
     return false;
   }
   function watchRoute(m, ep, sv) {
-    return "/phim/" + encodeURIComponent(m.id) + "/" + slug(m.title) + (ep ? "/tap-" + ep + (sv ? "/" + sv : "") : "");
+    return "/phim/" + encodeURIComponent(movieSlug(m)) + (ep ? "/tap-" + ep + (sv ? "/" + sv : "") : "");
   }
   function applyEpWhenReady(n, tries) {
     if (!n) { pendingEp = null; pendingKind = null; return; }
@@ -182,8 +197,17 @@
     if (page > 1) q.push("trang=" + page);
     return "/duyet-tim" + (q.length ? "?" + q.join("&") : "");
   }
-  function searchRoute(q, page) {
-    return "/tim-kiem/" + encodeURIComponent(q) + (page > 1 ? "?trang=" + page : "");
+  function searchRoute(q, page, f) {
+    var qs = [];
+    FILTERS.forEach(function (p) {
+      var v = f && f[p[0]];
+      if (v && !(p[0] === "sx" && v === "default")) qs.push(p[0] + "=" + encodeURIComponent(v));
+    });
+    if (page > 1) qs.push("trang=" + page);
+    return "/tim-kiem/" + encodeURIComponent(q) + (qs.length ? "?" + qs.join("&") : "");
+  }
+  function hasFilters(f) {
+    return FILTERS.some(function (p) { var v = f && f[p[0]]; return v && !(p[0] === "sx" && v === "default"); });
   }
   function filtersFromSelects() {
     var f = {};
@@ -261,15 +285,16 @@
   // Đổi bộ lọc bằng ô chọn: chỉ thay URL (không thêm mục lịch sử)
   wrap("applyFilter", null, function () {
     var f = filtersFromSelects();
-    browseState = { q: null, f: f, page: 1 };
-    baseRoute = browseRoute(f, 1);
+    var q = (browseState && browseState.q != null) ? browseState.q : null; // đang xem kết quả tìm kiếm -> giữ từ khoá
+    browseState = { q: q, f: f, page: 1 };
+    baseRoute = q != null ? searchRoute(q, 1, f) : browseRoute(f, 1);
     if (!applying && shown("page-browse")) navigate(baseRoute, "replace");
   });
   // Chuyển trang kết quả
   wrap("goPg", null, function () {
     if (!browseState) return;
     browseState.page = (typeof bPage !== "undefined") ? bPage : 1;
-    baseRoute = browseState.q != null ? searchRoute(browseState.q, browseState.page) : browseRoute(browseState.f, browseState.page);
+    baseRoute = browseState.q != null ? searchRoute(browseState.q, browseState.page, browseState.f) : browseRoute(browseState.f, browseState.page);
     navigate(baseRoute, "push");
   });
 
@@ -314,7 +339,7 @@
   function openDetailFromRoute(idStr, tries, ep, kind) {
     restoring = true;
     setTimeout(function () { restoring = false; }, 25000);
-    var m = findMovie(idStr);
+    var m = findMovieBySlug(idStr);
     if (m) {
       if (detailOpen() && String(_currentWatchMovieId) === String(m.id)) {
         if (ep && (getEp() !== ep || (kind && visibleKind() !== kind))) { pendingEp = ep; pendingKind = kind || null; applyEpWhenReady(ep); }
@@ -341,6 +366,8 @@
   function restoreBrowse(query) {
     var f = {};
     FILTERS.forEach(function (p) { f[p[0]] = query[p[0]] || ""; });
+    if (typeof resetFilterFields === "function") resetFilterFields();   // xoá bộ lọc + từ khoá tìm kiếm cũ
+    try { _browseQuery = ""; } catch (e) {}
     var active = FILTERS.map(function (p) { return p[0]; }).filter(function (k) { return f[k] && !(k === "sx" && f[k] === "default"); });
     if (!active.length) window.showBrowse("Duyệt Tìm");
     else if (active.length === 1 && active[0] === "the-loai") window.filterByGenre(f["the-loai"]);
@@ -356,11 +383,21 @@
     }
     gotoPage(query.trang);
   }
-  function restoreSearch(q, trang) {
+  function restoreSearch(q, trang, query) {
     var d = $("search-input"), m = $("search-overlay-input");
     if (d) d.value = q;
     if (m) m.value = q;
     window.doSearch();
+    var f = {};
+    FILTERS.forEach(function (p) { f[p[0]] = (query && query[p[0]]) || ""; });
+    if (hasFilters(f)) {
+      FILTERS.forEach(function (p) {
+        var e = $(p[1]);
+        if (e) e.value = f[p[0]] || (p[0] === "sx" ? "default" : "");
+      });
+      window.applyFilter();               // giữ từ khoá, lọc thêm theo URL
+      try { if (typeof fpSync === "function") fpSync(); } catch (e) {}
+    }
     gotoPage(trang);
   }
   function gotoPage(trang) {
@@ -373,8 +410,11 @@
   function applyRoute(route) {
     var p = parse(route), parts = p.parts, head = parts[0] || "";
     if (head === "phim" && parts[1]) {
-      var em = /^tap-(\d+)$/.exec(parts[3] || "");
-      openDetailFromRoute(parts[1], 0, em ? +em[1] : null, em ? (SV_IN[parts[4]] || null) : null);
+      // mới: phim/<ten>/tap-n/svk ; cũ: phim/<id>/<ten>/tap-n/svk
+      var legacy = parts.length > 2 && !/^tap-\d+$/.test(parts[2]);
+      var o = legacy ? 3 : 2;
+      var em = /^tap-(\d+)$/.exec(parts[o] || "");
+      openDetailFromRoute(parts[1], 0, em ? +em[1] : null, em ? (SV_IN[parts[o + 1]] || null) : null);
       return;
     }
     applying++;
@@ -383,7 +423,7 @@
       if (route === baseRoute) return; // trang nền đang hiển thị đúng rồi
       var ok = true;
       if (head === "duyet-tim") { restoreBrowse(p.query); syncNav("browse", p.query); }
-      else if (head === "tim-kiem" && parts[1]) { restoreSearch(parts[1], p.query.trang); syncNav("search"); }
+      else if (head === "tim-kiem" && parts[1]) { restoreSearch(parts[1], p.query.trang, p.query); syncNav("search"); }
       else if (ME_ROUTES[head]) {
         if (typeof isLoggedIn === "function" && isLoggedIn()) { window.openMe(ME_ROUTES[head]); syncNav("me"); }
         else { ok = false; window.showHome(); syncNav("home"); setRoute("", "replace"); } // chưa đăng nhập
