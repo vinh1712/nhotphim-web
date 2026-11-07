@@ -1,20 +1,30 @@
 /* =====================================================================
-   router.js — Định tuyến bằng hash (#/...) cho Nhót Phim
-   Đặt file này cạnh index.html và thêm ngay trước </body>:
+   router.js — Định tuyến bằng đường dẫn thật (không dùng #) cho Nhót Phim
+   Đặt file này cạnh index.html / web2.html và thêm ngay trước </body>:
        <script src="router.js"></script>
 
    Các đường dẫn:
-     (không có đuôi)                      Trang chủ
-     #phim/<ten-phim>/tap-<n>/sv<k>  Đang xem một phim (tập n, server k: sv1 sv2 sv3 m3u8)
-     #/duyet-tim?loai=series&quoc-gia=kr&the-loai=action&ngon-ngu=sub&nam=2025&sx=rating&trang=2
-                                          Trang duyệt / lọc (mọi tham số đều tùy chọn)
+     /                                    Trang chủ
+     /phim/<ten-phim>/tap-<n>/sv<k>       Đang xem một phim (tập n, server k: sv1 sv2 sv3 m3u8)
+     /phim-le  /phim-bo                   Phim lẻ / phim bộ
+     /the-loai/<the-loai>                 vd /the-loai/hanh-dong
+     /quoc-gia/<quoc-gia>                 vd /quoc-gia/han-quoc
+     /nam/<nam>  /ngon-ngu/<ngon-ngu>     vd /nam/2025, /ngon-ngu/phu-de
+     /phim-bo?quoc-gia=kr&sx=rating&trang=2
+                                          Bộ lọc còn lại và số trang nằm ở query (mọi tham số tùy chọn)
                                           ngon-ngu = sub | tm | dub ; sx = default | updated | rating
-     #/tim-kiem/<tu-khoa>?loai=...&trang=2  Kết quả tìm kiếm (có thể lọc thêm bằng các tham số trên)
-     #/tai-khoan  #/yeu-thich  #/danh-sach  #/xem-tiep     Trang cá nhân
+     /duyet-tim?...                       Kiểu cũ, vẫn đọc được
+     /tim-kiem/<tu-khoa>?loai=...&trang=2 Kết quả tìm kiếm (có thể lọc thêm bằng các tham số trên)
+     /tai-khoan  /yeu-thich  /danh-sach  /xem-tiep     Trang cá nhân
 
-   Dùng hash nên chạy được trên GitHub Pages / Live Server (đường dẫn thật như
-   /phim/abc sẽ 404 khi F5) và không đụng tới ?code= / #access_token= của đăng nhập Google.
-   Không cần sửa gì khác trong index.html: file tự "bọc" các hàm có sẵn
+   Vì là đường dẫn thật nên khi F5 ngay ở /phim/... máy chủ phải trả về chính trang
+   xem phim (SPA fallback), ví dụ Netlify/Cloudflare Pages: /*  /web2.html  200
+   (xem README cạnh file này). Mở file trực tiếp bằng file:// thì trình duyệt chặn
+   history API -> URL không đổi được, trang vẫn chạy bình thường.
+
+   Link kiểu cũ có # (#/phim/..., #phim/...) vẫn được đọc và tự chuyển sang đường dẫn thật.
+   Không đụng tới ?code= / #access_token= của đăng nhập Google.
+   Không cần sửa gì khác trong trang: file tự "bọc" các hàm có sẵn
    (openPlayer, closeDetail, showHome, showBrowse, filterBy..., doSearch, goPg, openMe).
    ===================================================================== */
 (function () {
@@ -31,6 +41,8 @@
   }
 
   var baseTitle = document.title;
+  // Tên ngắn để ghép vào tiêu đề phụ (trang chủ giữ đủ "Nhót Phim - Phim hay chín hết cả mùa")
+  var brandShort = (baseTitle.split(" - ")[0] || baseTitle).trim();
   var pageTitle = baseTitle;   // tiêu đề của trang nền (khi không mở phim)
   var booting = true;          // chưa khôi phục xong -> chưa được ghi đè URL
   var applying = 0;            // đang áp dụng URL -> các hàm bọc không ghi lịch sử
@@ -101,10 +113,43 @@
     if (!m) { ix = slugIndex(true); m = ix.bySlug[sl]; }
     return m || findMovie(sl);
   }
-  // URL: #/phim/ten-phim/tap-3/sv1, #/duyet-tim, #/tai-khoan... Link cũ không có "/" sau # (#phim/...) vẫn đọc được.
-  function currentRoute() {
-    var h = (location.hash || "").replace(/^#\/*/, "");
-    return h ? "/" + h : "";
+  /* ---------- đường dẫn thật (không dùng #) ----------
+     router.js nằm cạnh trang nên thư mục chứa nó là gốc site (BASE):
+     BASE + /phim/..., BASE + /duyet-tim?... Trang chủ là BASE (hoặc đúng tên file đang mở).
+     Hash cũ (#/phim/...) vẫn đọc được để link đã chia sẻ không bị chết. */
+  var BASE = (function () {
+    var b = null;
+    try {
+      var s = document.currentScript && document.currentScript.src;
+      if (s) b = new URL(s, location.href).pathname.replace(/[^\/]*$/, "");
+    } catch (e) {}
+    if (b == null) b = (location.pathname || "/").replace(/[^\/]*$/, "");
+    return b || "/";
+  })();
+  var HOME_FILE = (function () {
+    var m = /\/([^\/]+\.html?)$/i.exec(location.pathname || "");
+    return m ? m[1] : "";   // đang mở /web2.html -> trang chủ giữ nguyên tên file đó
+  })();
+  var ROUTE_HEADS = /^(?:phim|duyet-tim|tim-kiem|tai-khoan|yeu-thich|danh-sach|xem-tiep)(?:[\/?]|$)/;
+  function hashRoute() {
+    var h = (location.hash || "").replace(/^#\/?/, "");
+    return ROUTE_HEADS.test(h) ? "/" + h : "";
+  }
+  function pathRoute() {
+    var p = location.pathname || "/";
+    if (BASE !== "/" && p.indexOf(BASE) === 0) p = "/" + p.slice(BASE.length);
+    var rel = p.replace(/^\/+/, "").replace(/\/+$/, "");
+    if (!rel || /^index\.html?$/i.test(rel) || (HOME_FILE && rel.toLowerCase() === HOME_FILE.toLowerCase())) return "";
+    return "/" + rel + (location.search || "");
+  }
+  function currentRoute() { return hashRoute() || pathRoute(); }
+  function urlFor(route) {
+    return BASE + (route ? String(route).replace(/^\/+/, "") : HOME_FILE);
+  }
+  function migrateHash() {
+    var h = hashRoute();
+    if (!h) return;
+    try { history.replaceState(history.state || null, "", urlFor(h)); } catch (e) {}
   }
   function parse(route) {
     var qi = route.indexOf("?");
@@ -167,10 +212,17 @@
   function watchRoute(m, ep, sv) {
     return "/phim/" + encodeURIComponent(movieSlug(m)) + (ep ? "/tap-" + ep + (sv ? "/" + sv : "") : "");
   }
+  function setTitle(m, ep) {
+    try { document.title = (m && m.title ? m.title : "") + (ep ? " - Tập " + ep : "") + " - " + brandShort; } catch (e) {}
+  }
   function applyEpWhenReady(n, tries) {
     if (!n) { pendingEp = null; pendingKind = null; return; }
     tries = tries || 0;
-    if ((getEp() === n && (!pendingKind || visibleKind() === pendingKind)) || setEp(n, pendingKind) || tries > 20) { setTimeout(function () { pendingEp = null; pendingKind = null; }, 800); return; }
+    if ((getEp() === n && (!pendingKind || visibleKind() === pendingKind)) || setEp(n, pendingKind) || tries > 20) {
+      setTitle(findMovie(typeof _currentWatchMovieId !== "undefined" ? _currentWatchMovieId : null), n);
+      setTimeout(function () { pendingEp = null; pendingKind = null; }, 800);
+      return;
+    }
     setTimeout(function () { applyEpWhenReady(n, tries + 1); }, 500);
   }
   // Khi người xem đổi tập -> cập nhật URL (thay thế, không thêm lịch sử)
@@ -192,36 +244,92 @@
     var ep = getEp(), sv = ep ? getSv() : null, route = watchRoute(m, ep, sv);
     if (currentRoute() !== route && currentRoute().indexOf("/phim/") === 0) {
       navigate(route, "replace", { d: !!(history.state && history.state.d) });
-      try { document.title = (m.title || "") + (ep ? " - Tập " + ep : "") + " - " + baseTitle; } catch (e) {}
+      setTitle(m, ep);
     }
   }, 700);
 
   /* ---------- ghi lịch sử trình duyệt ---------- */
   function setRoute(route, mode, extra) {
     route = route || "";
-    if (currentRoute() === route && (route || !location.hash)) return;
+    if (currentRoute() === route) return;
     var state = { np: route };
     if (extra && extra.d) state.d = 1;
     try {
-      var url = location.pathname + location.search + (route ? "#" + route : "");
+      var url = urlFor(route);
       if (mode === "push") history.pushState(state, "", url);
       else history.replaceState(state, "", url);
-    } catch (e) { /* trình duyệt chặn history API -> bỏ qua, app vẫn chạy bình thường */ }
+    } catch (e) { /* trình duyệt chặn history API (file://) -> bỏ qua, app vẫn chạy bình thường */ }
   }
   function navigate(route, mode, extra) {
     if (booting || applying) return;
     setRoute(route, mode, extra);
   }
 
-  /* ---------- dựng đường dẫn ---------- */
+  /* ---------- dựng đường dẫn ----------
+     Bộ lọc chính thành đường dẫn đọc được: /phim-le, /phim-bo, /the-loai/hanh-dong,
+     /quoc-gia/han-quoc, /nam/2025, /ngon-ngu/phu-de; các bộ lọc còn lại + số trang ở query.
+     Nhãn lấy từ chính các ô chọn trong trang nên thêm thể loại/quốc gia mới là tự có. */
+  var SLUGS = null;
+  function slugMaps() {
+    var ids = { "the-loai": "f-genre", "quoc-gia": "f-country", "ngon-ngu": "f-lang", "sx": "f-sort" };
+    if (SLUGS) return SLUGS;
+    var maps = { bySlug: {}, byValue: {} };
+    Object.keys(ids).forEach(function (k) {
+      maps.bySlug[k] = {}; maps.byValue[k] = {};
+      var el = $(ids[k]);
+      if (!el) return;
+      Array.prototype.forEach.call(el.options, function (o) {
+        if (!o.value) return;
+        var s = slug(o.textContent) || o.value;
+        maps.bySlug[k][s] = o.value;
+        maps.byValue[k][o.value] = s;
+      });
+    });
+    SLUGS = maps;
+    return maps;
+  }
+  function valOf(key, slugStr) {
+    var m = slugMaps();
+    if (m.bySlug[key] && m.bySlug[key][slugStr]) return m.bySlug[key][slugStr];
+    return slugStr;   // người dùng gõ thẳng mã (action, kr...) vẫn nhận
+  }
   function browseRoute(f, page) {
+    var m = slugMaps(), path = "/duyet-tim", used = null;
+    function take(key, fn) {
+      if (used || !f || !f[key]) return;
+      var p = fn(f[key]);
+      if (!p) return;
+      path = p; used = key;
+    }
+    take("loai", function (v) { return v === "movie" ? "/phim-le" : v === "series" ? "/phim-bo" : null; });
+    take("the-loai", function (v) { return "/the-loai/" + encodeURIComponent(m.byValue["the-loai"][v] || v); });
+    take("quoc-gia", function (v) { return "/quoc-gia/" + encodeURIComponent(m.byValue["quoc-gia"][v] || v); });
+    take("nam", function (v) { return "/nam/" + encodeURIComponent(v); });
+    take("ngon-ngu", function (v) { return "/ngon-ngu/" + encodeURIComponent(m.byValue["ngon-ngu"][v] || v); });
     var q = [];
     FILTERS.forEach(function (p) {
+      if (p[0] === used) return;
       var v = f && f[p[0]];
       if (v && !(p[0] === "sx" && v === "default")) q.push(p[0] + "=" + encodeURIComponent(v));
     });
     if (page > 1) q.push("trang=" + page);
-    return "/duyet-tim" + (q.length ? "?" + q.join("&") : "");
+    return path + (q.length ? "?" + q.join("&") : "");
+  }
+  // Gộp bộ lọc lấy từ đường dẫn (/phim-le -> loai=movie) với query còn lại
+  function qWith(base, query) {
+    var o = {}, k;
+    for (k in query) o[k] = query[k];
+    for (k in base) o[k] = base[k];
+    return o;
+  }
+  // Bộ lọc suy ra từ một đường dẫn (dùng để đánh dấu lại menu sau khi bấm "Xem tất cả")
+  function filtersOfRoute(route) {
+    var p = parse(route || ""), parts = p.parts, head = parts[0] || "", q = qWith({}, p.query);
+    if (head === "phim-le") q.loai = "movie";
+    else if (head === "phim-bo") q.loai = "series";
+    else if ((head === "the-loai" || head === "quoc-gia" || head === "ngon-ngu") && parts[1]) q[head] = valOf(head, parts[1]);
+    else if (head === "nam" && parts[1]) q.nam = parts[1];
+    return q;
   }
   function searchRoute(q, page, f) {
     var qs = [];
@@ -243,20 +351,23 @@
 
   /* ---------- đánh dấu mục menu đang chọn ---------- */
   function syncNav(kind, query) {
-    var label = null;
-    if (kind === "home") label = "Trang Chủ";
+    var labels = [];
+    if (kind === "home") labels = ["Đề Xuất", "Trang Chủ"];
     else if (kind === "browse" && query) {
       var keys = Object.keys(query).filter(function (k) {
         return k !== "trang" && query[k] && !(k === "sx" && query[k] === "default");
       });
       if (keys.length === 1) {
-        if (keys[0] === "loai") label = query.loai === "movie" ? "Phim Lẻ" : query.loai === "series" ? "Phim Bộ" : null;
-        else if (keys[0] === "the-loai") label = NAV_GENRE_LABEL[query["the-loai"]] || null;
+        var k = keys[0];
+        if (k === "loai") labels = [query.loai === "movie" ? "Phim Lẻ" : query.loai === "series" ? "Phim Bộ" : ""];
+        else if (k === "the-loai") labels = [NAV_GENRE_LABEL[query[k]] || "", "Thể Loại"];
+        else if (k === "quoc-gia") labels = ["Quốc Gia"];
       }
     }
     var found = null;
     Array.prototype.forEach.call(document.querySelectorAll(".nav-link"), function (l) {
-      if (label && l.textContent.trim() === label) found = l;
+      if (found) return;
+      if (labels.indexOf(l.textContent.trim()) !== -1) found = l;
     });
     try { if (typeof setNav === "function") setNav(found); } catch (e) {}
   }
@@ -278,6 +389,7 @@
     baseRoute = ""; browseState = null; pageTitle = baseTitle;
     try { document.title = baseTitle; } catch (e) {}
     navigate("", "push");
+    setTimeout(function () { syncNav("home"); }, 0);
   });
 
   // Trang nền: duyệt / lọc / tìm kiếm
@@ -294,9 +406,14 @@
     pendingSearch = pendingBrowse = null;
     baseRoute = route;
     var t = $("browse-title");
-    pageTitle = ((t && t.textContent) || "Duyệt Tìm") + " - " + baseTitle;
+    pageTitle = ((t && t.textContent) || "Duyệt Tìm") + " - " + brandShort;
     try { document.title = pageTitle; } catch (e) {}
     navigate(route, "push");
+    // App tự đặt lại menu khi mở trang duyệt -> đánh dấu lại sau đó để "Xem tất cả"
+    // ở các hàng (Phim Bộ, Phim Hàn, Thể Loại...) sáng đúng mục tương ứng.
+    setTimeout(function () {
+      syncNav(route.indexOf("/tim-kiem") === 0 ? "search" : "browse", filtersOfRoute(route));
+    }, 0);
   });
   function clearPending() { pendingSearch = pendingBrowse = null; }
   wrap("filterByGenre", function (g) { pendingBrowse = { "the-loai": g }; }, clearPending);
@@ -315,6 +432,8 @@
     browseState = { q: q, f: f, page: 1 };
     baseRoute = q != null ? searchRoute(q, 1, f) : browseRoute(f, 1);
     if (!applying && shown("page-browse")) navigate(baseRoute, "replace");
+    var rr = baseRoute;
+    setTimeout(function () { syncNav("browse", filtersOfRoute(rr)); }, 0);
   });
   // Chuyển trang kết quả
   wrap("goPg", null, function () {
@@ -329,7 +448,7 @@
     if (!shown("page-me")) return; // chưa đăng nhập -> hàm gốc đã bật khung đăng nhập
     var route = ME_PATHS[section || "account"] || ME_PATHS.account;
     baseRoute = route;
-    pageTitle = (section === "favs" ? "Yêu thích" : section === "list" ? "Danh sách" : section === "continue" ? "Xem tiếp" : "Tài khoản") + " - " + baseTitle;
+    pageTitle = (section === "favs" ? "Yêu thích" : section === "list" ? "Danh sách" : section === "continue" ? "Xem tiếp" : "Tài khoản") + " - " + brandShort;
     try { document.title = pageTitle; } catch (e) {}
     navigate(route, "push");
   });
@@ -338,7 +457,7 @@
   wrap("_openPlayerCore", function (id) {
     var m = findMovie(id);
     if (!m) return;
-    try { document.title = (m.title || "") + " - " + baseTitle; } catch (e) {}
+    try { document.title = (m.title || "") + " - " + brandShort; } catch (e) {}
     if (expectId != null && String(expectId) === String(m.id)) {
       // đang mở theo URL (F5 / Back / Forward): URL đã đúng, không ghi lịch sử
       detailPushed = expectPushed;
@@ -448,7 +567,17 @@
       if (detailOpen()) { detailPushed = false; expectId = null; window.closeDetail(); }
       if (route === baseRoute) return; // trang nền đang hiển thị đúng rồi
       var ok = true;
-      if (head === "duyet-tim") { restoreBrowse(p.query); syncNav("browse", p.query); }
+      if (head === "phim-le" || head === "phim-bo") {
+        var q1 = qWith({ loai: head === "phim-le" ? "movie" : "series" }, p.query);
+        restoreBrowse(q1); syncNav("browse", q1);
+      } else if ((head === "the-loai" || head === "quoc-gia" || head === "ngon-ngu") && parts[1]) {
+        var q2 = qWith({}, p.query);
+        q2[head] = valOf(head, parts[1]);
+        restoreBrowse(q2); syncNav("browse", q2);
+      } else if (head === "nam" && parts[1]) {
+        var q3 = qWith({ nam: parts[1] }, p.query);
+        restoreBrowse(q3); syncNav("browse", q3);
+      } else if (head === "duyet-tim") { restoreBrowse(p.query); syncNav("browse", p.query); }
       else if (head === "tim-kiem" && parts[1]) { restoreSearch(parts[1], p.query.trang, p.query); syncNav("search"); }
       else if (ME_ROUTES[head]) {
         if (typeof isLoggedIn === "function" && isLoggedIn()) { window.openMe(ME_ROUTES[head]); syncNav("me"); }
@@ -461,6 +590,15 @@
     } finally { applying--; }
   }
 
+  /* ---------- mở link kiểu cũ có # khi trang đang mở sẵn ---------- */
+  window.addEventListener("hashchange", function () {
+    if (booting) return;
+    var h = hashRoute();
+    if (!h) return;                       // #access_token=... của Google vẫn để yên
+    migrateHash();
+    try { applyRoute(h); } catch (e) { console.error("[router] lỗi hashchange:", e); }
+  });
+
   /* ---------- nút Back / Forward ---------- */
   window.addEventListener("popstate", function () {
     if (booting) return;
@@ -471,7 +609,7 @@
   function ready() {
     if (!booting) return;
     booting = false;
-    if (!currentRoute() && location.hash) setRoute("", "replace"); // "#" / "#/" thừa -> xóa
+    migrateHash();  // link kiểu cũ #/phim/... -> /phim/...
     try { applyRoute(currentRoute()); } catch (e) { console.error("[router] lỗi khôi phục URL:", e); uncover(); }
     if (currentRoute().indexOf("/phim/") !== 0) uncover();
   }
