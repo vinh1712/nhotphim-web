@@ -1,0 +1,16 @@
+{
+  "name": "Nhót Phim",
+  "short_name": "Nhót Phim",
+  "description": "Xem phim chất lượng cao 4K, Vietsub, thuyết minh. Kho phim lẻ, phim bộ, anime mới nhất cập nhật mỗi ngày.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d0d0d",
+  "theme_color": "#0d0d0d",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
