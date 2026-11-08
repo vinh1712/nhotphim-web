@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <!-- ===== SPA FALLBACK CHO GITHUB PAGES =====
+         GitHub Pages không có rewrite (/* /index.html 200), nên mọi đường dẫn thật
+         như /phim/<ten>/tap-1/sv3 đều trả 404 và trang này được hiển thị thay.
+         - Trình duyệt: chuyển sang dạng #/phim/... -> router.js mở đúng phim rồi
+           tự chuyển lại URL thật (replaceState), người dùng vẫn thấy link đẹp.
+         - Crawler (Messenger / Facebook / Zalo): đọc các thẻ og: bên dưới nên link
+           phim chia sẻ vẫn hiện đúng tiêu đề + ẢNH XEM TRƯỚC (logo Nhót Phim).
+         Đặt file này ở CÙNG thư mục với index.html (gốc repo). -->
+    <title>Nhót Phim - Phim hay chín hết cả mùa</title>
+    <meta name="description" content="Xem phim chất lượng cao 4K, Vietsub, thuyết minh. Kho phim lẻ, phim bộ, anime mới nhất cập nhật mỗi ngày." />
+    <meta property="og:site_name" content="Nhót Phim" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="vi_VN" />
+    <meta property="og:url" content="https://nhotphim.online/" />
+    <meta property="og:title" content="Nhót Phim - Phim hay chín hết cả mùa" />
+    <meta property="og:description" content="Xem phim chất lượng cao 4K, Vietsub, thuyết minh. Kho phim lẻ, phim bộ, anime mới nhất cập nhật mỗi ngày." />
+    <meta property="og:image" content="https://nhotphim.online/og-image.png" />
+    <meta property="og:image:secure_url" content="https://nhotphim.online/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Nhót Phim - Phim hay chín hết cả mùa" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Nhót Phim - Phim hay chín hết cả mùa" />
+    <meta name="twitter:description" content="Xem phim chất lượng cao 4K, Vietsub, thuyết minh. Kho phim lẻ, phim bộ, anime mới nhất cập nhật mỗi ngày." />
+    <meta name="twitter:image" content="https://nhotphim.online/og-image.png" />
+    <!-- Trình duyệt không chạy JS: về trang chủ -->
+    <noscript><meta http-equiv="refresh" content="0; url=https://nhotphim.online/" /></noscript>
+    <script>
+      (function () {
+        // Giữ nguyên đường dẫn phim khi chuyển sang dạng # (router.js sẽ chuyển lại URL thật)
+        var p = (location.pathname || "/") + (location.search || "");
+        var isRoute = /^\/(phim|duyet-tim|tim-kiem|tai-khoan|yeu-thich|danh-sach|xem-tiep)(\/|\?|$)/.test(p);
+        location.replace(isRoute ? "/#" + p : "/");
+      })();
+    </script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #0d0d0d;
+        color: #e8e8e8;
+        font-family: "Be Vietnam Pro", system-ui, sans-serif;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px;
+      }
+      .box { max-width: 420px; }
+      .logo { font-size: 40px; margin-bottom: 12px; }
+      h1 {
+        font-size: 22px;
+        font-weight: 800;
+        background: linear-gradient(135deg, #ffe580, #f5a623 50%, #ff6b35);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 8px;
+      }
+      p { color: #888; font-size: 14px; line-height: 1.7; margin-bottom: 20px; }
+      a {
+        display: inline-block;
+        background: linear-gradient(135deg, #f5a623, #ff7a1a);
+        color: #000;
+        font-weight: 800;
+        font-size: 14px;
+        padding: 12px 28px;
+        border-radius: 50px;
+        text-decoration: none;
+        box-shadow: 0 4px 18px rgba(245, 130, 0, 0.35);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div class="logo">🍅</div>
+      <h1>Nhót Phim</h1>
+      <p>Đang chuyển hướng tới trang phim…<br />Nếu không tự chuyển, bấm nút bên dưới.</p>
+      <a href="/">Về trang chủ</a>
+    </div>
+  </body>
+</html>
