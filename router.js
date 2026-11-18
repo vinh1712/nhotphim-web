@@ -5,7 +5,9 @@
 
    Các đường dẫn:
      /                                    Trang chủ
-     /phim/<ten-phim>/tap-<n>/sv<k>       Đang xem một phim (tập n, server k: sv1 sv2 sv3 m3u8)
+     /phim/<ten-phim>                     Trang thông tin phim (chưa bật khung phim)
+      /xem-phim/<ten-phim>/tap-<n>/sv<k>    Đang xem phim (tập n, server k: sv1 sv2 sv3 m3u8)
+      /phim/<ten-phim>/tap-<n>/sv<k>        Link cũ -> tự chuyển sang /xem-phim/... khi khung phim mở
      /phim-le  /phim-bo                   Phim lẻ / phim bộ
      /the-loai/<the-loai>                 vd /the-loai/hanh-dong
      /quoc-gia/<quoc-gia>                 vd /quoc-gia/han-quoc
@@ -130,7 +132,14 @@
     var m = /\/([^\/]+\.html?)$/i.exec(location.pathname || "");
     return m ? m[1] : "";   // đang mở /web2.html -> trang chủ giữ nguyên tên file đó
   })();
-  var ROUTE_HEADS = /^(?:phim|duyet-tim|tim-kiem|tai-khoan|yeu-thich|danh-sach|xem-tiep)(?:[\/?]|$)/;
+  var ROUTE_HEADS = /^(?:phim|xem-phim|duyet-tim|tim-kiem|tai-khoan|yeu-thich|danh-sach|xem-tiep)(?:[\/?]|$)/;
+  // Route trang phim: /phim/<ten> = trang thông tin ; /xem-phim/<ten>/tap-n/svk = đang xem phim
+  function isMovieRoute(r) { return /^\/(?:xem-)?phim\//.test(r || ""); }
+  // Khung phim đang mở hay không (dùng để chọn kiểu URL: xem thông tin hay đang xem)
+  function playerOpen() {
+    var w = document.getElementById("dp-player-wrap");
+    return !!w && w.style.display === "block";
+  }
   function hashRoute() {
     var h = (location.hash || "").replace(/^#\/?/, "");
     return ROUTE_HEADS.test(h) ? "/" + h : "";
@@ -209,8 +218,12 @@
     }
     return false;
   }
-  function watchRoute(m, ep, sv) {
-    return "/phim/" + encodeURIComponent(movieSlug(m)) + (ep ? "/tap-" + ep + (sv ? "/" + sv : "") : "");
+  // watching = false -> trang thông tin: /phim/<ten>
+  // watching = true  -> đang xem phim:  /xem-phim/<ten>/tap-<n>/<sv>
+  function watchRoute(m, ep, sv, watching) {
+    var slug = "/phim/" + encodeURIComponent(movieSlug(m));
+    if (!watching) return slug;
+    return slug.replace("/phim/", "/xem-phim/") + (ep ? "/tap-" + ep + (sv ? "/" + sv : "") : "");
   }
   function setTitle(m, ep) {
     try { document.title = (m && m.title ? m.title : "") + (ep ? " - Tập " + ep : "") + " - " + brandShort; } catch (e) {}
@@ -218,7 +231,10 @@
   function applyEpWhenReady(n, tries) {
     if (!n) { pendingEp = null; pendingKind = null; return; }
     tries = tries || 0;
-    if ((getEp() === n && (!pendingKind || visibleKind() === pendingKind)) || setEp(n, pendingKind) || tries > 20) {
+    // "Xong" chỉ khi ĐÚNG tập + ĐÃ mở khung phim (chỉ số tập có thể đã đúng sẵn
+    // mà khung phim chưa mở -> vẫn phải setEp để tự phát khi F5 / deep link)
+    var done = getEp() === n && playerOpen() && (!pendingKind || visibleKind() === pendingKind);
+    if (done || setEp(n, pendingKind) || tries > 20) {
       setTitle(findMovie(typeof _currentWatchMovieId !== "undefined" ? _currentWatchMovieId : null), n);
       setTimeout(function () { pendingEp = null; pendingKind = null; }, 800);
       return;
@@ -230,7 +246,7 @@
     if (booting || applying) return;
     if (!detailOpen()) {
       // Phim đã đóng mà link vẫn là #phim/... (vd. history.back() không có chỗ để lùi) -> trả link về trang nền
-      if (!restoring && !pendingEp && Date.now() > closingUntil && currentRoute().indexOf("/phim/") === 0) {
+      if (!restoring && !pendingEp && Date.now() > closingUntil && isMovieRoute(currentRoute())) {
         detailPushed = false; expectId = null;
         try { document.title = pageTitle; } catch (e) {}
         navigate(baseRoute, "replace");
@@ -241,8 +257,10 @@
     if (pendingEp) return;
     var m = findMovie(typeof _currentWatchMovieId !== "undefined" ? _currentWatchMovieId : null);
     if (!m) return;
-    var ep = getEp(), sv = ep ? getSv() : null, route = watchRoute(m, ep, sv);
-    if (currentRoute() !== route && currentRoute().indexOf("/phim/") === 0) {
+    // Đang mở khung phim -> /xem-phim/<ten>/tap-n/svk ; chỉ xem thông tin -> /phim/<ten>
+    var watching = playerOpen();
+    var ep = watching ? getEp() : null, sv = ep ? getSv() : null, route = watchRoute(m, ep, sv, watching);
+    if (currentRoute() !== route && isMovieRoute(currentRoute())) {
       navigate(route, "replace", { d: !!(history.state && history.state.d) });
       setTitle(m, ep);
     }
@@ -487,7 +505,8 @@
     var m = findMovieBySlug(idStr);
     if (m) {
       if (detailOpen() && String(_currentWatchMovieId) === String(m.id)) {
-        if (ep && (getEp() !== ep || (kind && visibleKind() !== kind))) { pendingEp = ep; pendingKind = kind || null; applyEpWhenReady(ep); }
+        // Cùng phim đang mở: nếu URL có tập mà khung phim chưa mở (F5) -> phát lại tập đó
+        if (ep && (getEp() !== ep || !playerOpen() || (kind && visibleKind() !== kind))) { pendingEp = ep; pendingKind = kind || null; applyEpWhenReady(ep); }
         return;
       }
       expectId = m.id;
@@ -501,8 +520,8 @@
       if (ep) setTimeout(function () { applyEpWhenReady(ep); }, 400);
       return;
     }
-    // Danh sách phim chưa có (đang dùng bản lưu cũ / mạng chậm): thử lại vài lần
-    if ((tries || 0) < 3) { setTimeout(function () { openDetailFromRoute(idStr, (tries || 0) + 1, ep, kind); }, 2500); return; }
+    // Danh sách phim chưa có (đang dùng bản lưu cũ / mạng chậm): thử lại nhanh cho tới khi có
+    if ((tries || 0) < 10) { setTimeout(function () { openDetailFromRoute(idStr, (tries || 0) + 1, ep, kind); }, 500); return; }
     uncover();
     restoring = false;
     setRoute("", "replace"); // không tìm thấy phim (đã xóa?) -> bỏ đuôi, ở lại trang chủ
@@ -554,8 +573,8 @@
 
   function applyRoute(route) {
     var p = parse(route), parts = p.parts, head = parts[0] || "";
-    if (head === "phim" && parts[1]) {
-      // mới: phim/<ten>/tap-n/svk ; cũ: phim/<id>/<ten>/tap-n/svk
+    if ((head === "phim" || head === "xem-phim") && parts[1]) {
+      // mới: phim/<ten>/tap-n/svk ; cũ: phim/<id>/<ten>/tap-n/svk ; xem-phim/<ten>/tap-n/svk = đang xem
       var legacy = parts.length > 2 && !/^tap-\d+$/.test(parts[2]);
       var o = legacy ? 3 : 2;
       var em = /^tap-(\d+)$/.exec(parts[o] || "");
@@ -611,7 +630,7 @@
     booting = false;
     migrateHash();  // link kiểu cũ #/phim/... -> /phim/...
     try { applyRoute(currentRoute()); } catch (e) { console.error("[router] lỗi khôi phục URL:", e); uncover(); }
-    if (currentRoute().indexOf("/phim/") !== 0) uncover();
+    if (!isMovieRoute(currentRoute())) uncover();
   }
   var origInit = window.initApp;
   if (typeof origInit === "function") {
@@ -623,12 +642,15 @@
     };
   }
   // Dự phòng: initApp có thể đã được gọi trước khi router.js nạp -> theo dõi trạng thái thực tế
+  // Ở trang /phim/...: chỉ cần MOVIES đã tải là mở phim ngay (không cần chờ màn tải tắt),
+  // nhờ vậy F5 không bị hiện trang chủ trước.
   var waited = 0;
   (function waitReady() {
     if (!booting) return;
     var ls = $("loading-screen");
     var gone = !ls || ls.classList.contains("hide") || ls.style.display === "none";
-    if ((typeof MOVIES !== "undefined" && MOVIES.length > 1 && gone) || waited > 30000) { ready(); return; }
+    var movieRoute = isMovieRoute(currentRoute());
+    if ((typeof MOVIES !== "undefined" && MOVIES.length > 1 && (gone || movieRoute)) || waited > 30000) { ready(); return; }
     waited += 250;
     setTimeout(waitReady, 250);
   })();

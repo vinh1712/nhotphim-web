@@ -38,6 +38,7 @@
       })();
     </script>
     <link rel="preconnect" href="https://tlbumpjugtltznzuwqwt.supabase.co" crossorigin />
+    <link rel="preconnect" href="https://wsrv.nl" crossorigin />
     <script>
       /* Tải sớm ảnh hero của lần xem trước (chạy trước cả khi JS chính khởi động) */
       (function () {
@@ -45,11 +46,16 @@
           var o = JSON.parse(localStorage.getItem("np_hero_pre_v1") || "null");
           if (!o) return;
           var mobile = window.matchMedia && matchMedia("(max-width: 768px)").matches;
+          var urls = [];
           var u = mobile ? o.m : o.d;
-          if (!u || u.indexOf("http") !== 0) return;
-          var l = document.createElement("link");
-          l.rel = "preload"; l.as = "image"; l.href = u; l.fetchPriority = "high";
-          document.head.appendChild(l);
+          if (u && u.indexOf("http") === 0) urls.push(u);
+          // Logo tên phim (bản thu nhỏ, cache 1 năm) -> hiện ngay không phải chờ
+          if (!mobile && o.l && o.l.indexOf("http") === 0) urls.push(o.l);
+          urls.forEach(function (href) {
+            var l = document.createElement("link");
+            l.rel = "preload"; l.as = "image"; l.href = href; l.fetchPriority = "high";
+            document.head.appendChild(l);
+          });
         } catch (e) {}
       })();
     </script>
@@ -91,6 +97,13 @@
           });
         } catch (e) {}
       })();
+    </script>
+    <script>
+      /* F5 ở trang xem phim (/phim/... hoặc /xem-phim/...): giữ màn hình tải thay vì để lộ trang chủ,
+         router.js sẽ gọi __npRelease() ngay khi trang phim đã mở xong. */
+      if (/^\/(?:xem-)?phim\//.test(location.pathname) || /^#\/?(?:xem-)?phim\//.test(location.hash)) window.__npHold = true;
+      /* An toàn: quá 25s vẫn chưa mở được phim -> nhả màn tải để không kẹt */
+      setTimeout(function () { if (window.__npRelease) window.__npRelease(); }, 25000);
     </script>
     <link
       href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap"
@@ -586,11 +599,14 @@
         font-size: 14px;
       }
       .genre-trigger.open { border-color: var(--accent); }
-      /* ===== DETAIL PAGE HERO (banner phim) ===== */
+      /* ===== DETAIL PAGE HERO (trang phim) =====
+         Ảnh backdrop trải NỀN TOÀN BỘ khu vực hero (poster + thông tin nằm trên
+         ảnh mờ, có gradient tối để chữ đọc được) — giống Chợ Phim. */
+      .dp-stage { position: relative; }
       .dp-backdrop {
-        position: relative;
-        min-height: 480px;
-        background: #111;
+        position: absolute;
+        inset: 0;                /* nền phủ HẾT khối nội dung (cuộn xuống không lộ sọc) */
+        background: var(--bg);
         overflow: hidden;
       }
       .dp-hero {
@@ -598,14 +614,18 @@
         z-index: 5;
         max-width: 1100px;
         margin: 0 auto;
-        padding: 80px 28px 40px;
+        /* Căn ĐẦU (không căn giữa): nội dung bắt đầu thấp hơn -> hero hiện gần full ở trên,
+           bấm "Xem thêm" chỉ kéo dài nội dung xuống DƯỚI (không cả khối bị đẩy lên -> hết nhảy khung hình) */
+        padding: clamp(240px, 42vh, 420px) 28px 48px; /* kéo khối thông tin XUỐNG THẤP -> hero hiện nhiều ảnh hơn, ít bị che */
+        min-height: 100vh;       /* HERO FULL chiều cao màn hình — ảnh backdrop phủ kín */
         display: flex;
         align-items: flex-start;
         gap: 32px;
       }
-      .dp-poster-wrap { flex-shrink: 0; position: relative; }
+      .dp-poster-col { flex-shrink: 0; width: 240px; }
+      .dp-poster-wrap { position: relative; }
       .dp-poster-img {
-        width: 200px;
+        width: 100%;
         border-radius: 12px;
         box-shadow: 0 16px 48px rgba(0,0,0,0.85);
         display: block;
@@ -615,7 +635,17 @@
         backface-visibility: hidden;
         image-rendering: -webkit-optimize-contrast;
       }
-      .dp-info { flex: 1; min-width: 0; padding-bottom: 4px; }
+      .dp-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        padding-top: 0;
+      }
+      /* Khối "Nội dung phim" (desktop: dưới poster; mobile: chuyển vào "Thông tin phim") */
+      .dp-desc-block { margin-top: 14px; }
+      .dp-poster-col .dp-desc { max-width: none; margin-bottom: 4px; }
+      .dp-poster-col .dp-desc-toggle { margin-bottom: 0; }
       .dp-title-en { font-size: 13px; color: var(--accent); margin-bottom: 6px; font-weight: 500; }
       .dp-title {
         font-size: 32px;
@@ -627,6 +657,59 @@
       }
       .dp-badges-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
       .dp-badge { font-size: 12px; padding: 3px 9px; border-radius: 5px; font-weight: 600; }
+      /* Nút "Xem ngay" to, nổi bật — bấm mới hiện khung xem phim */
+      .dp-watch-now {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        background: var(--accent);
+        color: #000;
+        border: none;
+        border-radius: 999px;
+        padding: 12px 34px;
+        margin: 0;
+        font-size: 16px;
+        font-weight: 800;
+        font-family: inherit;
+        letter-spacing: -0.2px;
+        cursor: pointer;
+        box-shadow: 0 10px 28px rgba(245,166,35,0.3);
+        transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease;
+      }
+      .dp-watch-now:hover { filter: brightness(1.08); transform: translateY(-2px); box-shadow: 0 14px 34px rgba(245,166,35,0.4); }
+      .dp-watch-now:active { transform: translateY(0); }
+      /* Hàng nút: Xem ngay + Yêu thích / Danh sách / Bình luận (kiểu Chợ Phim) */
+      .dp-actions-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+      .dp-actions-row .dp-user-actions { margin-top: 0; }
+      /* Bảng thông tin chi tiết: Trạng thái / Năm / Thể loại / Đạo diễn / Loại / Thời lượng / Quốc gia */
+      .dp-meta {
+        display: flex;
+        gap: 4px 56px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+      .dp-meta-col { flex: 1 1 250px; min-width: 0; }
+      .dp-meta-row {
+        display: flex;
+        gap: 12px;
+        font-size: 13.5px;
+        line-height: 1.95;
+      }
+      .dp-meta-row > span { color: rgba(255,255,255,0.55); flex-shrink: 0; min-width: 82px; }
+      .dp-meta-row > b { color: rgba(255,255,255,0.95); font-weight: 600; min-width: 0; }
+      .dp-sub-hd {
+        font-size: 15px;
+        font-weight: 700;
+        color: #fff;
+        margin: 2px 0 8px;
+      }
       .dp-desc {
         font-size: 13.5px;
         line-height: 1.8;
@@ -656,24 +739,68 @@
         margin-bottom: 22px;
       }
       .dp-desc-toggle:hover { text-decoration: underline; }
+      /* Nút "Thông tin phim" — chỉ hiện ở mobile (kiểu Chợ Phim): mở ra bảng thông tin */
+      .dp-info-toggle {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: none;
+        border: none;
+        color: #e5c07b;
+        font-size: 15px;
+        font-weight: 700;
+        font-family: inherit;
+        cursor: pointer;
+        padding: 2px 0 4px;
+        align-self: center;
+      }
+      .dp-info-toggle .dp-chev { transition: transform 0.3s ease; }
+      .dp-info-toggle.open .dp-chev { transform: rotate(180deg); }
       .dp-container { max-width: 1100px; margin: 0 auto; padding: 12px 28px 0; }
       @media (max-width: 640px) {
-        .dp-backdrop { min-height: unset; }
+        /* Mobile: ảnh backdrop trải nền toàn hero (column), chữ trên nền ảnh tối */
         .dp-hero {
           flex-direction: column;
           align-items: center;
+          justify-content: center; /* dọc (column) -> căn giữa theo chiều cao 100vh */
           text-align: center;
-          gap: 14px;
-          padding: 64px 16px 20px;
+          gap: 10px;
+          margin-top: 0;
+          padding: 76px 16px 20px;
         }
-        .dp-poster-img { width: 116px; }
-        .dp-info { width: 100%; padding-bottom: 0; }
-        .dp-title-en { text-align: center; }
-        .dp-title { font-size: 23px; margin-bottom: 8px; }
-        .dp-badges-row { justify-content: center; margin-bottom: 10px; }
+        .dp-poster-col { width: 152px; }
+        .dp-info { width: 100%; padding-top: 0; }
+        .dp-title-en { order: 1; text-align: center; }
+        .dp-title { order: 2; font-size: 23px; margin-bottom: 6px; }
+        .dp-actions-row { order: 3; justify-content: center; gap: 14px; margin-bottom: 6px; }
+        .dp-info-toggle { order: 4; display: inline-flex; }
+        .dp-info-extra { order: 5; }
+        #dp-parts-section { order: 6; }
+        #dp-ep-section { order: 7; }
+        #dp-sources-list-inline { justify-content: center; }
+        /* Nút ▶ Full (phim lẻ): căn TRÁI dưới hàng Server như desktop, không lơ lửng giữa màn hình */
+        #dp-episodes { justify-content: flex-start; }
+        .dp-watch-now { display: flex; width: 85%; max-width: 340px; padding: 12px 0; margin: 0 auto; border-radius: 999px; }
+        .dp-user-actions { justify-content: center; gap: 30px; width: 100%; margin-top: 10px; }
+        /* Ô "Thông tin phim" đóng/mở trượt */
+        .dp-info-extra {
+          max-height: 0;
+          opacity: 0;
+          overflow: hidden;
+          transition: max-height 0.35s ease, opacity 0.25s ease;
+        }
+        .dp-info-extra.open { max-height: 1400px; opacity: 1; }
+        .dp-badges-row { justify-content: center; margin-bottom: 8px; }
+        .dp-meta { gap: 0; margin-bottom: 12px; }
+        .dp-meta-col { flex: 1 1 100%; }
+        .dp-meta-row { justify-content: space-between; gap: 14px; line-height: 1.9; }
+        .dp-meta-row > span { min-width: 0; }
+        .dp-meta-row > b { text-align: right; }
+        .dp-sub-hd { text-align: left; font-size: 14.5px; margin-top: 4px; }
         .dp-badge { font-size: 11px; padding: 2px 7px; }
-        #dp-genre-tags { justify-content: center; margin-bottom: 12px !important; }
-        .dp-desc { max-width: none; text-align: left; font-size: 12.5px; margin-bottom: 16px; }
+        .dp-desc-block { text-align: left; margin-top: 0; }
+        .dp-desc { max-width: none; text-align: left; font-size: 12.5px; margin-bottom: 6px; }
         .dp-container { padding-left: 16px; padding-right: 16px; text-align: center; }
         #dp-thumb-strip { display: none !important; }
       }
@@ -1532,6 +1659,10 @@
       .mhero-poster[data-d="2"] { opacity: 0.6; filter: brightness(0.45) saturate(0.8) blur(1.5px); }
       .mhero-poster[data-d="far"] { opacity: 0; pointer-events: none; }
       .mhero-poster.active { border-color: #fff; box-shadow: 0 18px 44px rgba(0,0,0,0.65); }
+      /* Đang kéo: poster đổi vị trí LIVE theo ngón tay (tắt transition của transform cho bám tức thì) */
+      .mhero-strip.drag-live .mhero-poster {
+        transition: opacity 0.25s, filter 0.25s, border-color 0.2s, box-shadow 0.25s;
+      }
       .mhero-poster img { -webkit-user-drag: none; pointer-events: none; }
       .mhero-info {
         position: relative; z-index: 2;
@@ -1539,7 +1670,10 @@
         text-align: center; padding: 20px 20px 0; border-bottom: none;
         width: 100%; max-width: 380px; margin: 0 auto;
       }
-      .mhero-info.mh-anim { animation: mhFadeUp 0.5s cubic-bezier(.22,.9,.34,1); }
+      /* Thông tin phim (dưới poster): đổi TỨC THI, không hiệu ứng chuyển — tránh nháy chữ khi đổi slide */
+      .mhero-info { position: relative; }
+      .mhero-info-ghost { display: none; }
+      /* Keyframes cho menu mobile (.mh-menu.open) — không dùng cho info hero nữa */
       @keyframes mhFadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
       .mhero-title-logo { order: 0; margin: 0 auto 10px; object-position: center; }
       /* font-bold leading-[1.35] tracking-[-0.025em] drop-shadow-md, cỡ clamp(1.375rem,6vw,1.5rem) */
@@ -1548,6 +1682,8 @@
         padding: 4px 0 2px; text-align: center; color: #fff;
         font-size: clamp(1.375rem, 6vw, 1.5rem); font-weight: 700;
         line-height: 1.35; letter-spacing: -0.025em; text-shadow: none;
+        /* Tên phim dài quá -> 1 dòng + "..." : mọi slide có bố cục dưới giống hệt nhau */
+        display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         filter: drop-shadow(0 4px 3px rgba(0,0,0,0.07)) drop-shadow(0 2px 2px rgba(0,0,0,0.06));
       }
       .mhero-title-en {
@@ -1572,9 +1708,9 @@
       .mhero-dots { position: relative; z-index: 2; flex-wrap: wrap; gap: 6px; padding: 12px 20px 6px; }
       .mhero-dot { width: 8px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.3); }
       .mhero-dot.active { width: 24px; background: var(--accent); }
-      body.mh-resizing .mhero-poster, body.mh-resizing .mhero-info.mh-anim { transition: none !important; animation: none !important; }
+      body.mh-resizing .mhero-poster { transition: none !important; animation: none !important; }
       @media (prefers-reduced-motion: reduce) {
-        .mhero-poster, .mhero-info.mh-anim { transition: none; animation: none; }
+        .mhero-poster { transition: none; animation: none; }
       }
       /* ===== END COVERFLOW HERO ===== */
       /* ===== 3 NÚT PILL (Đề xuất / Phim Bộ / Phim Lẻ) — thay hàng nav trên điện thoại ===== */
@@ -1884,6 +2020,8 @@
         color: var(--muted);
         cursor: pointer;
         transition: color 0.2s;
+        white-space: nowrap;
+        flex-shrink: 0;
       }
       .section-hd .more:hover {
         color: var(--accent);
@@ -2619,22 +2757,28 @@
          vừa khít nội dung và % chiều rộng của nút bị tính sai -> nút bị bóp, icon dính mép */
       #dp-episodes { width: 100%; }
       #dp-episodes [id^="ep-list-"] { width: 100%; box-sizing: border-box; }
-      #dp-episodes .ep-tab-btn { white-space: nowrap; flex-shrink: 0; }
+      /* Danh sách tập là GRID (không phải flex): nút cùng khổ với nhau ở mọi server,
+         tránh nút "Tập 1" nhỏ hơn "Tập 10" do flex bám theo nội dung chữ. */
+      #dp-episodes [id^="ep-list-"] { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
+      #dp-episodes [id^="ep-list-"] .ep-tab-btn {
+        white-space: nowrap;
+        text-align: center;
+        padding: 8px 8px !important;
+        min-width: 0;
+        box-sizing: border-box;
+      }
       /* Điện thoại: nút tập nhỏ gọn, 4 nút / hàng, đều nhau */
       @media (max-width: 640px) {
-        #dp-episodes .ep-tab-btn {
-          flex: 0 0 calc((100% - 24px) / 4);
+        #dp-episodes [id^="ep-list-"] { grid-template-columns: repeat(4, 1fr); }
+        #dp-episodes [id^="ep-list-"] .ep-tab-btn {
           min-width: 64px;
           padding: 8px 6px !important;
           font-size: 12.5px !important;
-          text-align: center;
-          white-space: nowrap;
-          box-sizing: border-box;
         }
         #dp-episodes .ep-scroll { gap: 8px; padding-right: 6px; }
       }
       @media (max-width: 340px) {
-        #dp-episodes .ep-tab-btn { flex-basis: calc((100% - 16px) / 3); }
+        #dp-episodes [id^="ep-list-"] { grid-template-columns: repeat(3, 1fr); }
       }
       /* ===== END DANH SÁCH TẬP ===== */
 
@@ -2693,18 +2837,19 @@
       .um-item.danger { color: #f87171; }
       #section-continue { scroll-margin-top: 110px; }
 
-      /* nút Yêu thích / Danh sách trong trang chi tiết phim */
-      .dp-user-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+      /* nút Yêu thích / Danh sách / Bình luận — icon trên, chữ dưới (kiểu Chợ Phim) */
+      .dp-user-actions { display: flex; gap: 26px; margin-top: 14px; flex-wrap: wrap; align-items: flex-start; }
       .dp-act-btn {
-        display: inline-flex; align-items: center; gap: 8px;
-        background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
-        color: #fff; border-radius: 50px; padding: 9px 18px; font-size: 13px; font-weight: 600;
+        display: inline-flex; flex-direction: column; align-items: center; gap: 5px;
+        background: none; border: none;
+        color: rgba(255,255,255,0.85); border-radius: 10px; padding: 4px 8px; font-size: 12.5px; font-weight: 600;
         cursor: pointer; font-family: inherit; transition: all 0.2s;
       }
-      .dp-act-btn:hover { background: rgba(255,255,255,0.18); }
-      .dp-act-btn.on { background: rgba(245,166,35,0.18); border-color: rgba(245,166,35,0.55); color: var(--accent); }
+      .dp-act-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+      .dp-act-btn.on { background: rgba(245,166,35,0.16); color: var(--accent); }
+      .dp-act-ic { font-size: 22px; line-height: 1; }
       #dp-fav-btn.on .dp-act-ic { color: #f87171; }
-      @media (max-width: 640px) { .dp-user-actions { justify-content: center; } }
+      @media (max-width: 640px) { .dp-user-actions { justify-content: center; width: 100%; gap: 30px; } }
 
       /* trang Tài khoản / Yêu thích / Danh sách */
       #page-me { display: none; }
@@ -3179,6 +3324,78 @@
         color: var(--accent);
       }
 
+      /* ===== "Bạn đang quan tâm gì?" — thẻ chủ đề đầu trang ===== */
+      .interest-row {
+        gap: 12px;
+        padding-bottom: 6px;
+      }
+      .int-card {
+        flex: 0 0 auto;
+        width: 188px;
+        height: 104px;
+        border-radius: 14px;
+        padding: 14px 16px;
+        background: linear-gradient(135deg, var(--g1, #1f2937), var(--g2, #374151));
+        border: 1px solid rgba(255,255,255,0.09);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        scroll-snap-align: start;
+        transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+        box-shadow: 0 8px 22px rgba(0,0,0,0.32);
+        user-select: none;
+      }
+      .int-card:after {
+        content: "";
+        position: absolute;
+        right: -24px;
+        top: -24px;
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.12);
+      }
+      .int-card:hover {
+        transform: translateY(-3px);
+        filter: brightness(1.1);
+        box-shadow: 0 14px 30px rgba(0,0,0,0.42);
+      }
+      .int-ic { font-size: 24px; line-height: 1; position: relative; z-index: 1; }
+      .int-tx { display: flex; flex-direction: column; gap: 3px; position: relative; z-index: 1; min-width: 0; }
+      .int-name {
+        font-size: 15px;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: -0.2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 152px;
+      }
+      .int-go { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.85); white-space: nowrap; }
+      .int-card-more { background: var(--card); border: 1px dashed var(--border); box-shadow: none; }
+      .int-card-more:after { display: none; }
+      .int-card-more:hover { filter: none; border-color: var(--accent); }
+      .int-card-more .int-name { color: var(--text); }
+      .int-card-more .int-go { color: var(--muted); }
+      /* "Xem thêm chủ đề" đang mở: hiện hết chủ đề, xếp nhiều dòng thay vì trượt ngang */
+      .interest-row.interest-wrap {
+        flex-wrap: wrap;
+        overflow-x: hidden;
+        row-gap: 12px;
+      }
+      .interest-row.interest-wrap .scroll-arrow { display: none; }
+      @media (max-width: 640px) {
+        .interest-row { gap: 10px; }
+        .int-card { width: 154px; height: 92px; padding: 12px 13px; border-radius: 12px; }
+        .int-ic { font-size: 21px; }
+        .int-name { font-size: 13.5px; max-width: 126px; }
+        .int-go { font-size: 10.5px; }
+      }
+
       /* Thẻ phim trên trang chủ: bo 12px, chữ căn trái, phụ đề xám như Chợ Phim */
       #page-home .scroll-row .movie-card:not(.mc-continue) .mc-poster,
       #page-home .scroll-row .movie-card:not(.mc-continue) .mc-poster-ph {
@@ -3259,13 +3476,15 @@
         color: #e5e7eb;
         font-weight: 700;
       }
-      .rank-row .movie-card { flex: 0 0 208px; }
+      .rank-row .movie-card { flex: 0 0 276px; }
+      /* Mục Top 10: cách xa các mục khác 1 chút (mặc định các mục cách 28px) */
+      #section-top10 { margin: 44px 0; }
       /* Số thứ tự lớn ở góc dưới-trái thẻ Top 10 */
       .rank-num {
         position: absolute;
         left: 6px;
         bottom: 0;
-        font-size: 54px;
+        font-size: 66px;
         font-weight: 900;
         line-height: 0.86;
         letter-spacing: -2px;
@@ -3283,6 +3502,8 @@
       @media (max-width: 640px) {
         .rank-row .movie-card { flex: 0 0 168px !important; }
         .rank-num { font-size: 42px; }
+        /* Điện thoại: tiêu đề Top 10 về cỡ cũ 18px (bản máy tính vẫn 36px) */
+        #top10-title { font-size: 18px !important; }
       }
 
       /* Chuyển động tối giản: chỉ đổi màu/nền */
@@ -3777,7 +3998,6 @@
           <div class="hero-badges">
             <span class="hbadge imdb"><span class="imdb-word">IMDb</span><span id="hb-rating">8.5</span></span>
             <span class="hbadge ep" id="hb-ep">T16</span>
-            <span class="hbadge year" id="hb-year">2025</span>
             <span class="hbadge part" id="hb-part" style="display:none"></span>
           </div>
           <div class="hero-genre-pills" id="h-genre-pills"></div>
@@ -3795,6 +4015,18 @@
         <div class="hero-dots" id="hero-dots"></div>
       </div>
       <div class="container">
+        <!-- ===== BẠN ĐANG QUAN TÂM GÌ? (chủ đề đầu trang, kiểu Chợ Phim) ===== -->
+        <div class="section" id="section-interest">
+          <div class="section-hd" style="border-left:3px solid #f472b6;">
+            <h2 style="display:flex;align-items:center;gap:10px;">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:linear-gradient(135deg,#831843,#db2777);border-radius:6px;font-size:14px;">💖</span>
+              <span style="background:linear-gradient(to right,#e8e8e8,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-size:18px;letter-spacing:-0.3px;">Bạn đang quan tâm gì?</span>
+            </h2>
+          </div>
+          <div class="scroll-row interest-row" id="interest-row"></div>
+        </div>
+        <!-- ===== END BẠN ĐANG QUAN TÂM GÌ? ===== -->
+
         <!-- ===== XEM TIẾP ===== -->
         <div class="section" id="section-continue" style="display:none;">
           <div class="section-hd">
@@ -3869,8 +4101,7 @@
         <div class="section" id="section-top10">
           <div class="section-hd" style="border-left:3px solid #fbbf24;">
             <h2 style="display:flex;align-items:center;gap:10px;">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:linear-gradient(135deg,#7c2d12,#f59e0b);border-radius:6px;font-size:14px;">🔥</span>
-              <span style="background:linear-gradient(to right,#e8e8e8,#fbbf24);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-size:18px;letter-spacing:-0.3px;">Top 10 phim bộ hôm nay</span>
+              <span id="top10-title" style="background:linear-gradient(to right,#e8e8e8,#fbbf24);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-size:36px;letter-spacing:-0.3px;">Top 10 phim bộ hôm nay</span>
             </h2>
             <span class="more" onclick="filterByType('series')" style="color:#fbbf24;font-weight:600;font-size:13px;">Xem tất cả →</span>
           </div>
@@ -4125,37 +4356,90 @@
         z-index: 500;
         background: var(--bg);
         overflow-y: auto;
+        overflow-anchor: none; /* TẮT scroll anchoring của Chrome: bấm Xem thêm mà nội dung dài ra
+                                  -> trình duyệt không tự chỉnh cuộn nữa -> hero KHÔNG nhảy */
       "
     >
-      <!-- Backdrop -->
+      <!-- ===== HERO: ẢNH TRẢI NỀN TOÀN BỘ KHU VỰC POSTER + THÔNG TIN ===== -->
+      <div class="dp-stage">
       <div id="dp-backdrop" class="dp-backdrop">
         <!-- Backdrop image (dimmed) -->
-        <div id="dp-backdrop-img" style="position:absolute;inset:0;background-size:cover;background-position:center top;filter:brightness(0.5);"></div>
-        <!-- Gradients -->
-        <div style="position:absolute;inset:0;background:linear-gradient(to right,rgba(13,13,13,0.3),transparent 60%);"></div>
-        <div style="position:absolute;bottom:0;left:0;right:0;height:200px;background:linear-gradient(to top,var(--bg) 25%,transparent);"></div>
+        <div id="dp-backdrop-img" style="position:absolute;top:0;left:0;right:0;height:100vh;background-size:cover;background-position:center top;opacity:0.8;"></div>
+        <!-- Gradient kiểu Chợ Phim: tối dần ĐỘI LÊN TRÊN — đáy = màu nền ĐẶC, nửa trên trong suốt
+             để ảnh SÁNG thấy rõ, chữ trắng nằm vùng tối vẫn đọc được.
+             Cả 3 lớp đều ghim cứng 100vh (giống ảnh) -> nội dung dài ra không làm gradient đổi -> hết nhảy hero -->
+        <div style="position:absolute;top:0;left:0;right:0;height:100vh;background:linear-gradient(to top,var(--bg) 0%,rgba(13,13,13,0.4) 50%,transparent 100%);"></div>
+        <div style="position:absolute;top:0;left:0;right:0;height:100vh;background:linear-gradient(to top,var(--bg) 0%,rgba(13,13,13,0.6) 24%,transparent 80%);"></div>
         <div style="position:absolute;top:0;left:0;right:0;height:90px;background:linear-gradient(to bottom,rgba(13,13,13,0.65),transparent);"></div>
         <!-- Back button -->
         <button onclick="closeDetail()" style="position:absolute;top:16px;left:16px;background:rgba(0,0,0,0.55);border:none;color:#fff;font-size:18px;width:38px;height:38px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;backdrop-filter:blur(4px);">←</button>
 
-        <!-- Hero content -->
-        <div class="dp-hero">
-          <!-- Poster -->
+        <!-- Thumbnail strip bottom-right (chỉ ảnh) -->
+        <div id="dp-thumb-strip" style="position:absolute;bottom:40px;right:28px;display:flex;gap:6px;z-index:6;"></div>
+      </div>
+
+      <!-- ===== NỘI DUNG TRANG PHIM — CHỮ NẰM DƯỚI BANNER, KHÔNG ĐÈ LÊN HERO ===== -->
+      <div class="dp-hero">
+        <!-- Cột trái: poster (trượt lên banner) + nội dung phim -->
+        <div class="dp-poster-col" id="dp-poster-col">
           <div class="dp-poster-wrap">
             <img id="dp-poster" src="" alt="" class="dp-poster-img" />
           </div>
-          <!-- Info column -->
-          <div class="dp-info">
-            <div id="dp-title-en" class="dp-title-en"></div>
-            <div id="dp-title" class="dp-title"></div>
+          <!-- "Nội dung phim": desktop để dưới poster; mobile chuyển vào "Thông tin phim" -->
+          <div class="dp-desc-block" id="dp-desc-block">
+            <h3 class="dp-sub-hd">Nội dung phim</h3>
+            <p id="dp-desc" class="dp-desc"></p>
+            <button id="dp-desc-toggle" class="dp-desc-toggle" onclick="toggleDpDesc()">Xem thêm</button>
+          </div>
+        </div>
+        <!-- Cột phải: tên phim + bảng thông tin + nút hành động (bắt đầu dưới banner) -->
+        <div class="dp-info">
+          <div id="dp-title-en" class="dp-title-en"></div>
+          <div id="dp-title" class="dp-title"></div>
+          <!-- Bảng thông tin: mobile gói trong nút "Thông tin phim", desktop hiện trực tiếp -->
+          <div class="dp-info-extra" id="dp-info-extra">
             <!-- IMDb + badges -->
             <div class="dp-badges-row">
               <span id="dp-imdb" class="dp-badge" style="background:#e2b616;color:#000;font-weight:800;"></span>
+              <span id="dp-quality" class="dp-badge" style="background:rgba(56,189,248,0.2);color:#7dd3fc;border:1px solid rgba(56,189,248,0.45);"></span>
+              <span id="dp-sub-badge" class="dp-badge" style="background:rgba(255,255,255,0.18);color:#e8e8e8;"></span>
               <span id="dp-age" class="dp-badge" style="background:rgba(255,255,255,0.18);color:#e8e8e8;">T18</span>
               <span id="dp-year-badge" class="dp-badge" style="background:rgba(255,255,255,0.18);color:#e8e8e8;"></span>
               <span id="dp-ep-badge" class="dp-badge" style="background:rgba(255,255,255,0.18);color:#e8e8e8;"></span>
               <span id="dp-part-badge" style="display:none;"></span>
             </div>
+            <!-- Bảng thông tin đầy đủ (kiểu Chợ Phim): 2 cột, bỏ ô Đạo diễn -->
+            <div class="dp-meta">
+              <div class="dp-meta-col">
+                <div class="dp-meta-row"><span>Trạng thái</span><b id="dp-m-status">—</b></div>
+                <div class="dp-meta-row"><span>Năm</span><b id="dp-m-year">—</b></div>
+                <div class="dp-meta-row"><span>Thể loại</span><b id="dp-m-genre">—</b></div>
+              </div>
+              <div class="dp-meta-col">
+                <div class="dp-meta-row"><span>Loại</span><b id="dp-m-type">—</b></div>
+                <div class="dp-meta-row" id="dp-m-dur-row"><span>Thời lượng</span><b id="dp-m-dur">—</b></div>
+                <div class="dp-meta-row"><span>Quốc gia</span><b id="dp-m-country">—</b></div>
+              </div>
+            </div>
+            <div id="dp-desc-slot"></div>
+          </div><!-- /dp-info-extra -->
+            <!-- Hàng nút: Xem ngay (tự ẩn khi đã mở khung phim) + Yêu thích / Danh sách / Bình luận -->
+            <div class="dp-actions-row">
+              <button id="dp-watch-now" class="dp-watch-now" onclick="watchNow()">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><polygon points="5,3 19,12 5,21"/></svg>
+                <span>Xem ngay</span>
+              </button>
+              <div class="dp-user-actions" id="dp-user-actions">
+                <button type="button" class="dp-act-btn" id="dp-fav-btn" onclick="toggleDetailFav()"><span class="dp-act-ic">♡</span><span class="dp-act-tx">Yêu thích</span></button>
+                <button type="button" class="dp-act-btn" id="dp-list-btn" onclick="toggleDetailList()"><span class="dp-act-ic">＋</span><span class="dp-act-tx">Danh sách</span></button>
+                <button type="button" class="dp-act-btn" id="dp-cmt-btn" onclick="scrollToComments()"><span class="dp-act-ic">💬</span><span class="dp-act-tx">Bình luận</span></button>
+              </div>
+            </div>
+            <!-- Nút "Thông tin phim" (mobile, kiểu Chợ Phim): mở bảng thông tin + nội dung phim -->
+            <button type="button" class="dp-info-toggle" id="dp-info-toggle" onclick="toggleDpInfo()">
+              Thông tin phim
+              <svg class="dp-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 9l-7 7-7-7"/></svg>
+            </button>
             <!-- Parts selector (nhiều phần) -->
             <div id="dp-parts-section" style="display:none;margin-bottom:14px;position:relative;">
               <button id="dp-parts-btn" onclick="togglePartsDropdown()" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.4);color:#a78bfa;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.2s;">
@@ -4168,26 +4452,9 @@
                 <div id="dp-parts-list" style="max-height:240px;overflow-y:auto;"></div>
               </div>
             </div>
-            <!-- Genre tags (pill style) -->
-            <div id="dp-genre-tags" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;"></div>
-            <!-- Description -->
-            <p id="dp-desc" class="dp-desc"></p>
-            <button id="dp-desc-toggle" class="dp-desc-toggle" onclick="toggleDpDesc()">Xem thêm</button>
-            <div class="dp-user-actions" id="dp-user-actions">
-              <button type="button" class="dp-act-btn" id="dp-fav-btn" onclick="toggleDetailFav()"><span class="dp-act-ic">♡</span><span class="dp-act-tx">Yêu thích</span></button>
-              <button type="button" class="dp-act-btn" id="dp-list-btn" onclick="toggleDetailList()"><span class="dp-act-ic">＋</span><span class="dp-act-tx">Danh sách</span></button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Thumbnail strip bottom-right -->
-        <div id="dp-thumb-strip" style="position:absolute;bottom:40px;right:28px;display:flex;gap:6px;z-index:6;"></div>
-      </div>
-
-      <!-- Director info below hero -->
-      <div class="dp-container">
-        <div id="dp-director" style="font-size:13px;color:rgba(255,255,255,0.65);"></div>
-      </div>
+          </div><!-- /dp-info -->
+        </div><!-- /dp-hero -->
+      </div><!-- /dp-stage -->
 
       <div style="max-width: 1100px; margin: 0 auto; padding: 0 28px 60px">
         <div style="height:20px;"></div>
@@ -4278,13 +4545,6 @@
             <button style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;">📺 Phụ đề #1</button>
             <!-- Server buttons inline -->
             <div id="dp-sources-list-inline" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-            <!-- Auto next toggle -->
-            <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-left:auto;">
-              Tự chuyển tập
-              <div id="dp-autonext-toggle" onclick="toggleAutoNext()" style="width:34px;height:18px;background:#f5a623;border-radius:9px;position:relative;cursor:pointer;flex-shrink:0;transition:background 0.2s;">
-                <div id="dp-autonext-knob" style="width:14px;height:14px;background:#fff;border-radius:50%;position:absolute;right:2px;top:2px;transition:right 0.2s;"></div>
-              </div>
-            </div>
           </div>
           <div id="dp-episodes" style="display:flex;gap:10px;flex-wrap:wrap"></div>
           <!-- Status badge -->
@@ -5172,7 +5432,7 @@
         const bc = qBadge,
           bt = _q === "4K" ? "4K" : "HD";
         const imgSrc = m.backdrop || m.poster || "";
-        const partBadge = m.partNumber ? `<span class="mc-badge" style="background:rgba(139,92,246,0.85);color:#e9d5ff;">P${m.partNumber}</span>` : "";
+        // Không hiện số phần (P1/P2...) trên thẻ phim nữa
         // Tên gốc / tên tiếng Anh — hiện mờ dưới tên phim như Chợ Phim
         const enTitle = (() => {
           const en = String(m.titleEn || "").trim();
@@ -5180,9 +5440,9 @@
           if (!en) return "";
           return en.toLowerCase() === vi.toLowerCase() ? "" : en;
         })();
-        // Chỉ hiện các thông tin có giá trị thật, bỏ "N/A" và "Full" mặc định cho gọn
+        // Không hiện điểm IMDb trên thẻ lưới (chỉ Top 10 mới xếp theo điểm)
         const subParts = [];
-        if (m.rating && m.rating !== "N/A") subParts.push(`⭐ ${m.rating}`);
+        const subHtml = subParts.length ? `<div class="mc-sub">${subParts.join(" · ")}</div>` : "";
         // Tập phim đưa vào góc nhỏ trên ảnh: bỏ hết chữ "Full ... tập" / "Tập", chỉ còn "PĐ. số tập"
         const epCount = (() => {
           const s = String(m.ep || "");
@@ -5199,7 +5459,7 @@
         return `<div class="movie-card" onclick="openPlayer(${m.id})">
     <div class="mc-top-grad"></div>
     <div class="mc-bottom-grad"></div>
-    <div class="mc-badges"><span class="mc-badge ${bc}">${bt}</span>${partBadge}</div>
+    <div class="mc-badges"><span class="mc-badge ${bc}">${bt}</span></div>
     ${epTag ? `<div class="mc-tags">${epTag}</div>` : ""}
     <img class="mc-poster" data-mid="${m.id}" src="${imgSrc}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
     <div class="mc-poster-ph" style="display:none">🎬</div>
@@ -5207,7 +5467,7 @@
     <div class="mc-body">
       <div class="mc-title">${escHtml(m.title)}</div>
       ${enTitle ? `<div class="mc-title-en">${escHtml(enTitle)}</div>` : ""}
-      <div class="mc-sub">${subParts.join(" · ")}</div>
+      ${subHtml}
     </div>
   </div>`;
       }
@@ -5291,6 +5551,29 @@
         img.src = url;
       }
 
+      /* ===== ẢNH HERO QUA CDN GIẢM CỠ + LƯU CACHE 1 NĂM =====
+         Ảnh hero/logo lưu trên Supabase trả header "no-cache" -> lần nào mở web cũng tải lại
+         (nền tới 1.7MB, logo 549KB, có khi vài giây). wsrv.nl lấy bản thu nhỏ hơn nhiều
+         (nền ~120KB, logo ~40KB) và trả "max-age=1 năm" -> lần 2 là hiện ngay từ bộ nhớ máy.
+         Nếu proxy lỗi (host chặn...) thì tự quay lại URL gốc nên không bao giờ làm hỏng hero. */
+      const _PROXY_ORIG = new Map(); // url qua proxy -> url gốc
+      const _PROXY_BAD = new Set();  // url gốc nào proxy lỗi -> dùng thẳng bản gốc
+      function _fastImg(url, w, q) {
+        if (!url || typeof url !== "string" || url.slice(0, 8) !== "https://") return url; // data:/rỗng -> giữ nguyên
+        const orig = _PROXY_ORIG.get(url);
+        if (orig) return _PROXY_BAD.has(orig) ? orig : url; // đã là url qua proxy -> idempotent
+        if (_PROXY_BAD.has(url)) return url;
+        const p = "https://wsrv.nl/?url=" + encodeURIComponent(url) + "&w=" + w + "&output=webp&q=" + (q || 80);
+        _PROXY_ORIG.set(p, url);
+        return p;
+      }
+      // Gọi khi url qua proxy tải lỗi: đánh dấu bản gốc lỗi proxy và trả về bản gốc
+      function _proxyFallback(url) {
+        const orig = _PROXY_ORIG.get(url);
+        if (orig && !_PROXY_BAD.has(orig)) { _PROXY_BAD.add(orig); return orig; }
+        return null;
+      }
+
       let _heroLogoReqId = 0;
       // URL logo đã tải xong (đã nằm trong cache trình duyệt) -> lần sau đổi slide không cần chờ, không chớp
       const _heroLogoLoaded = new Set();
@@ -5307,23 +5590,27 @@
             if (cb) cb(true);
           });
         };
-        im.onerror = () => { if (cb) cb(false); };
+        im.onerror = () => {
+          const orig = _proxyFallback(url); // proxy lỗi -> thử bản gốc
+          if (orig) { _preloadHeroLogo(orig, cb); return; }
+          if (cb) cb(false);
+        };
         im.src = url;
       }
 
       // Ảnh nền hero đã tải + giải mã xong
       const _heroImgLoaded = new Set();
-      /* Ảnh nền hero: dùng bản ĐỘ PHÂN GIẢI CAO (TMDB "original") thay vì bản w1280 đã bị thu nhỏ để làm thẻ phim.
-         Màn nhỏ / mạng yếu (cần <= 1280px) thì vẫn dùng w1280 cho nhẹ. */
+      /* Ảnh nền hero: bản thu nhỏ qua CDN (w=1600) -> nhẹ hơn nhiều mà vẫn nét đủ
+         (kèm vignette + gradient che nên không cần bản "original" nặng vài MB). */
       function _heroBgUrl(m) {
         if (!m) return "";
         const raw = m.backdropHD || m.backdrop;
-        if (!raw) return m.poster || "";
+        if (!raw) return _fastImg(m.poster || "", 1600, 78);
         try {
           const need = Math.max(window.innerWidth || 0, (window.screen && screen.width) || 0) * (window.devicePixelRatio || 1);
           const size = need > 1300 ? "original" : "w1280";
-          return String(raw).replace(/image\.tmdb\.org\/t\/p\/(?:w\d+|original)\//, "image.tmdb.org/t/p/" + size + "/");
-        } catch (e) { return raw; }
+          return _fastImg(String(raw).replace(/image\.tmdb\.org\/t\/p\/(?:w\d+|original)\//, "image.tmdb.org/t/p/" + size + "/"), 1600, 78);
+        } catch (e) { return _fastImg(raw, 1600, 78); }
       }
       function _preloadHeroImg(url, cb) {
         if (!url) { if (cb) cb(false); return; }
@@ -5331,7 +5618,11 @@
         const im = new Image();
         const done = (ok) => { if (ok) _heroImgLoaded.add(url); if (cb) cb(ok); };
         im.onload = () => { (im.decode ? im.decode().catch(() => {}) : Promise.resolve()).then(() => done(true)); };
-        im.onerror = () => done(false);
+        im.onerror = () => {
+          const orig = _proxyFallback(url); // proxy lỗi -> thử bản gốc
+          if (orig) { _preloadHeroImg(orig, cb); return; }
+          done(false);
+        };
         im.src = url;
       }
 
@@ -5339,8 +5630,8 @@
       function _heroAssetsReady(m, cb, maxWait) {
         // Cùng điều kiện CSS đang ẩn .hero (mobile dọc -> dùng hero mobile, chữ thay logo)
         const desktopVisible = !(window.matchMedia && matchMedia("(max-width: 900px) and (min-height: 501px)").matches);
-        const bgUrl = desktopVisible ? _heroBgUrl(m) : (m.poster || m.backdrop || "");
-        const logoUrl = desktopVisible ? (m.logo || "") : ""; // mobile dọc dùng chữ, không cần chờ logo
+        const bgUrl = desktopVisible ? _heroBgUrl(m) : _fastImg(m.poster || m.backdrop || "", 1000, 80);
+        const logoUrl = desktopVisible ? _fastImg(m.logo || "", 768, 85) : ""; // mobile dọc dùng chữ, không cần chờ logo
         let pending = 0, finished = false, timer = null;
         const finish = () => { if (finished) return; finished = true; clearTimeout(timer); cb(); };
         const one = () => { if (--pending <= 0) finish(); };
@@ -5360,7 +5651,7 @@
         const queue = [];
         for (let k = 0; k < heroMs.length; k++) {
           const hm = heroMs[(heroI + k) % heroMs.length]; // phim gần slide hiện tại được tải trước
-          if (hm.logo) queue.push(() => new Promise(r => _preloadHeroLogo(hm.logo, r)));
+          if (hm.logo) queue.push(() => new Promise(r => _preloadHeroLogo(_fastImg(hm.logo, 768, 85), r)));
           queue.push(() => new Promise(r => _preloadHeroImg(_heroBgUrl(hm), r)));
         }
         (async () => { for (const job of queue) { try { await job(); } catch (_) {} } })();
@@ -5368,7 +5659,7 @@
       // Rê chuột lên thumbnail/chấm -> tải trước phim đó ngay để lúc bấm không phải chờ
       function _prefetchHeroAt(i) {
         const hm = heroMs[i]; if (!hm) return;
-        if (hm.logo) _preloadHeroLogo(hm.logo);
+        if (hm.logo) _preloadHeroLogo(_fastImg(hm.logo, 768, 85));
         _preloadHeroImg(_heroBgUrl(hm));
       }
       document.addEventListener("pointerover", (e) => {
@@ -5380,6 +5671,9 @@
       let _heroSwapReq = 0;
       function renderHero() {
         if (!heroMs.length) return Promise.resolve();
+        // Thông tin hero mobile: cập nhật NGAY lúc chuyển phim, KHÔNG chờ tải ảnh
+        // (trước đây chờ ảnh xong mới đổi chữ -> info phim cũ bị đọng lại vài giây giữa 2 slide)
+        try { renderMobileHero(heroMs[heroI]); } catch (_) {}
         const req = ++_heroSwapReq;
         _prefetchAllHero();
         const done = new Promise((resolve) => {
@@ -5393,7 +5687,7 @@
           const nm = heroMs[(heroI + k) % heroMs.length];
           if (!nm) return;
           _preloadHeroImg(_heroBgUrl(nm));
-          if (nm.logo) _preloadHeroLogo(nm.logo);
+          if (nm.logo) _preloadHeroLogo(_fastImg(nm.logo, 768, 85));
         });
         return done;
       }
@@ -5428,14 +5722,19 @@
         const logoEl = document.getElementById("h-title-logo");
         if (logoEl) {
           const logoReq = ++_heroLogoReqId;
-          const logoUrl = m.logo || "";
+          let logoUrl = _fastImg(m.logo || "", 768, 85); // bản thu nhỏ + cache 1 năm
           const showText = () => {
             logoEl.style.display = "none"; logoEl.removeAttribute("src"); logoEl.alt = "";
             if (titleEl) { titleEl.style.visibility = ""; titleEl.style.display = ""; }
           };
           const showLogo = () => {
+            logoUrl = _fastImg(logoUrl, 768, 85); // nếu proxy đã bị đánh lỗi thì lúc này đã là bản gốc
             logoEl.referrerPolicy = "no-referrer";
-            logoEl.onerror = () => { if (logoReq === _heroLogoReqId) showText(); };
+            logoEl.onerror = () => {
+              const orig = _proxyFallback(logoUrl); // proxy lỗi -> gắn lại bản gốc
+              if (orig && logoReq === _heroLogoReqId) { logoUrl = orig; logoEl.src = orig; return; }
+              if (logoReq === _heroLogoReqId) showText();
+            };
             logoEl.alt = m.title || "";
             const reveal = () => {
               if (logoReq !== _heroLogoReqId) return; // slide đã đổi -> bỏ qua logo này
@@ -5474,13 +5773,25 @@
           // Tải sẵn logo của 2 slide kế tiếp để lúc tự chuyển slide không phải chờ
           [1, 2].forEach((k) => {
             const nm = heroMs[(heroI + k) % heroMs.length];
-            if (nm && nm.logo) _preloadHeroLogo(nm.logo);
+            if (nm && nm.logo) _preloadHeroLogo(_fastImg(nm.logo, 768, 85));
           });
         }
         const titleEnEl = document.getElementById("h-title-en"); if(titleEnEl) titleEnEl.textContent = m.titleEn || "";
-        const ratingEl = document.getElementById("hb-rating"); if(ratingEl) ratingEl.textContent = m.rating || "N/A";
-        const epEl = document.getElementById("hb-ep"); if(epEl) epEl.textContent = m.sub || "Vietsub";
-        const yearEl = document.getElementById("hb-year"); if(yearEl) yearEl.textContent = m.year;
+        const ratingEl = document.getElementById("hb-rating");
+        if (ratingEl) {
+          const rv = String(m.rating || "").trim();
+          // Phim chưa có điểm IMDb -> hiện "N/A" (không ẩn badge)
+          ratingEl.textContent = (rv && rv !== "N/A") ? rv : "N/A";
+          const rb = ratingEl.closest(".hbadge");
+          if (rb) rb.style.display = "";
+        }
+        // Thẻ cạnh IMDb: hiện SỐ TẬP (vd "Tập 4/10", "Full 16 tập") thay vì sub/năm
+        const epEl = document.getElementById("hb-ep");
+        if (epEl) {
+          const epTxt = String(m.ep || "").trim() || (m.type === "movie" ? "Full" : "");
+          epEl.textContent = epTxt;
+          epEl.style.display = epTxt ? "" : "none";
+        }
         const heroEl = document.getElementById("hero"); if(heroEl) { heroEl.dataset.id = m.id; }
 
         // Part badge (show if ep contains "Phần")
@@ -5567,6 +5878,22 @@
         return String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       }
       let _mobileLogoReqId = 0;
+      // Đặt vị trí các poster theo heroI (vòng tròn) — dùng khi render lẫn khi thả tay để snap về/chuyển phim
+      function _mhApplyPositions() {
+        const strip = document.getElementById("mhero-strip"); if (!strip) return;
+        const n = heroMs.length; if (!n) return;
+        strip.classList.remove("drag-live");
+        strip.querySelectorAll(".mhero-poster").forEach((p, i) => {
+          let o = i - heroI;
+          if (o > n / 2) o -= n; else if (o < -n / 2) o += n;
+          const ao = Math.abs(o);
+          p.style.setProperty("--o", o);
+          p.style.setProperty("--ao", Math.min(ao, 3));
+          p.dataset.d = ao > 2 ? "far" : String(ao);
+          p.classList.toggle("active", o === 0);
+          p.style.zIndex = "";
+        });
+      }
       function renderMobileHero(m) {
         if (!document.querySelector('[data-mpills] .mpill')) setMPills(_mpillKey);
         const heroEl = document.getElementById("hero");
@@ -5583,11 +5910,12 @@
         const mhBadges = document.getElementById("mh-badges");
         if (mhBadges) {
           const b = [];
-          if (m.rating) b.push(`<span class="hbadge imdb"><span class="imdb-word">IMDb</span> ${m.rating}</span>`);
-          if (m.sub) b.push(`<span class="hbadge ep">${m.sub}</span>`);
-          if (m.year) b.push(`<span class="hbadge year">${m.year}</span>`);
+          const _rvM = String(m.rating || "").trim();
+          b.push(`<span class="hbadge imdb"><span class="imdb-word">IMDb</span> ${(_rvM && _rvM !== "N/A") ? _rvM : "N/A"}</span>`);
+          // Thẻ cạnh IMDb: hiện SỐ TẬP, không hiện sub/năm
+          const _mep = String(m.ep || "").trim() || (m.type === "movie" ? "Full" : "");
+          if (_mep) b.push(`<span class="hbadge ep">${escHtml(_mep)}</span>`);
           if (m.ep && m.ep.toLowerCase().includes("phần")) b.push(`<span class="hbadge part">${m.ep}</span>`);
-          if (m.episode_current) b.push(`<span class="hbadge ep">Tập ${m.episode_current}</span>`);
           mhBadges.innerHTML = b.join("");
         }
         const strip = document.getElementById("mhero-strip");
@@ -5597,7 +5925,7 @@
           if (strip.dataset.sig !== sig) {
             strip.dataset.sig = sig;
             strip.innerHTML = heroMs.map((hm, i) => {
-              const src = hm.poster || hm.backdrop || "";
+              const src = _fastImg(hm.poster || hm.backdrop || "", 1000, 80); // trùng URL với lúc chờ ảnh -> có sẵn trong cache
               return `<div class="mhero-poster" data-i="${i}" onclick="mhTap(${i})">
                 ${src ? `<img src="${src}" alt="${escHtml(hm.title)}" decoding="async" onerror="this.style.background='#222'">` : '<div style="width:100%;height:100%;background:#222;display:flex;align-items:center;justify-content:center;font-size:32px;">🎬</div>'}
               </div>`;
@@ -5605,24 +5933,14 @@
             _bindMhSwipe(document.getElementById("mobile-hero"));
           }
           // Mỗi poster nhận vị trí tương đối so với poster đang chọn (vòng tròn) -> CSS lo phần chuyển động
-          strip.querySelectorAll(".mhero-poster").forEach((p, i) => {
-            let o = i - heroI;
-            if (o > n / 2) o -= n; else if (o < -n / 2) o += n;
-            const ao = Math.abs(o);
-            p.style.setProperty("--o", o);
-            p.style.setProperty("--ao", Math.min(ao, 3));
-            p.dataset.d = ao > 2 ? "far" : String(ao);
-            p.classList.toggle("active", o === 0);
-          });
+          _mhApplyPositions();
         }
         const mhBg = document.getElementById("mhero-bg");
-        if (mhBg) { const bs = m.poster || m.backdrop || ""; mhBg.style.backgroundImage = bs ? `url("${bs}")` : "none"; }
+        if (mhBg) { const bs = _fastImg(m.poster || m.backdrop || "", 1000, 80); mhBg.style.backgroundImage = bs ? `url("${bs}")` : "none"; }
         const mhInfo = document.getElementById("mhero-info");
-        if (mhInfo) {
-          const changed = mhInfo.dataset.mid !== String(m.id);
-          mhInfo.dataset.mid = m.id;
-          if (changed) { mhInfo.classList.remove("mh-anim"); void mhInfo.offsetWidth; mhInfo.classList.add("mh-anim"); }
-        }
+        // Đổi thông tin TỨC THI khi sang phim khác: ghi đè text luôn, không ghost, không animation
+        // (chữ cũ không bao giờ nán lại, chữ mới không nháy vì không có hiệu ứng mờ)
+        if (mhInfo) mhInfo.dataset.mid = m.id;
         const mDots = document.getElementById("mhero-dots");
         if (mDots) {
           if (mDots.children.length !== heroMs.length) {
@@ -5824,6 +6142,42 @@
       function _bindMhSwipe(el) {
         if (!el || el._sw) return; el._sw = 1;
         let x0 = null, y0 = 0, lock = null;
+        /* Kéo live: kéo tới đâu thì poster đang ở giữa trượt dần sang mép,
+           poster kế bên trượt dần vào giữa (bám theo ngón tay, không nhảy) */
+        const _dragLive = (dx) => {
+          const strip = document.getElementById("mhero-strip"); if (!strip) return;
+          const ps = strip.querySelectorAll(".mhero-poster"); if (!ps.length) return;
+          const n = heroMs.length; if (!n) return;
+          const step = (ps[0].offsetWidth || 200) * 0.88; // 1 slide = 88% bề rộng poster (đúng CSS)
+          const shift = Math.max(-1, Math.min(1, dx / step)); // giới hạn trong 1 slide
+          strip.classList.add("drag-live");
+          strip._dragShift = shift;
+          ps.forEach((p, i) => {
+            let o = i - heroI;
+            if (o > n / 2) o -= n; else if (o < -n / 2) o += n;
+            const oe = o + shift; // vị trí live = vị trí gốc + quãng kéo
+            const ao = Math.min(Math.abs(oe), 3);
+            p.style.setProperty("--o", oe.toFixed(3));
+            p.style.setProperty("--ao", ao.toFixed(3));
+            const dd = ao > 2 ? "far" : ao < 0.5 ? "0" : ao < 1.5 ? "1" : "2";
+            if (p.dataset.d !== dd) p.dataset.d = dd;
+            p.style.zIndex = String(Math.max(0, Math.round(10 - ao)));
+            p.classList.toggle("active", ao < 0.5);
+          });
+        };
+        // Thả tay: kéo đủ xa -> chuyển phim (snap tiếp tục quãng đang kéo); chưa đủ -> nảy về chỗ cũ
+        const _dragEnd = (dx) => {
+          const strip = document.getElementById("mhero-strip");
+          const shift = (strip && strip._dragShift) || 0;
+          if (strip) strip._dragShift = 0;
+          if (Math.abs(dx) > 40 && Math.abs(shift) >= 0.26) {
+            _mhSwiped = Date.now();
+            mhGo(heroI + (shift < 0 ? 1 : -1)); // kéo trái -> sang phim kế
+            _mhApplyPositions(); // set vị trí mới NGAY (heroI đã đổi) -> poster trượt tiếp mượt, không đóng băng chờ render
+          } else {
+            _mhApplyPositions(); // chưa tới ngưỡng -> về lại vị trí cũ có transition
+          }
+        };
         const reset = () => { x0 = null; lock = null; window._mhTouching = false; };
         el.addEventListener("touchstart", e => {
           if (e.touches.length !== 1) { reset(); return; }
@@ -5837,30 +6191,101 @@
             lock = Math.abs(dx) >= Math.abs(dy) ? "h" : "v";
           }
           if (lock === "h" && e.cancelable) e.preventDefault(); // chặn trang trôi lên/xuống khi đang vuốt ngang
+          if (lock === "h") _dragLive(dx);
         }, { passive: false });
         el.addEventListener("touchend", e => {
           if (x0 == null) return;
           const dx = e.changedTouches[0].clientX - x0, was = lock;
           reset();
-          if (was === "h" && Math.abs(dx) > 40) { _mhSwiped = Date.now(); mhGo(heroI + (dx < 0 ? 1 : -1)); }
+          if (was === "h") _dragEnd(dx);
         }, { passive: true });
-        el.addEventListener("touchcancel", reset, { passive: true });
+        el.addEventListener("touchcancel", () => { reset(); _dragEnd(0); }, { passive: true });
         // chuột (khi thử trên máy tính thu nhỏ cửa sổ)
         let mx = null;
         el.addEventListener("pointerdown", e => { if (e.pointerType === "mouse") mx = e.clientX; });
+        el.addEventListener("pointermove", e => { if (e.pointerType === "mouse" && mx != null) _dragLive(e.clientX - mx); });
         el.addEventListener("pointerup", e => {
           if (e.pointerType !== "mouse" || mx == null) return;
           const dx = e.clientX - mx; mx = null;
-          if (Math.abs(dx) > 40) { _mhSwiped = Date.now(); mhGo(heroI + (dx < 0 ? 1 : -1)); }
+          _dragEnd(dx);
         });
       }
 
+      // Đang xem phim (khung phim đang mở) -> dừng khung phim, quay lại trang thông tin:
+      // đưa khối SV + danh sách tập về dưới nút "Xem ngay", hiện lại nút "Xem ngay", cuộn lên đầu.
+      // Trả về true nếu vừa thoát khỏi khung phim (dùng cho nút "Xem thêm").
+      function _backToInfoFromPlayer() {
+        const wrap = document.getElementById("dp-player-wrap");
+        if (!wrap || wrap.style.display !== "block") return false;
+        clearTimeout(_embedWatchTimer);
+        // Giữ window._pendingPlay (nguồn của tập đang xem) để nút "Xem ngay" hiện lại
+        // và bấm là xem tiếp tập đó — không reset như khi đóng trang phim.
+        const iframe = document.getElementById("dp-player-iframe");
+        const video = document.getElementById("dp-player-video");
+        if (iframe) { iframe.src = ""; iframe.style.display = "block"; }
+        if (video) {
+          video.onerror = null;
+          video.pause && video.pause();
+          video.src = "";
+          video.style.display = "none";
+        }
+        if (typeof hlsInstance !== "undefined" && hlsInstance) { try { hlsInstance.destroy(); } catch (_) {} hlsInstance = null; }
+        wrap.style.display = "none";
+        _placeEpSection(false); // SV + danh sách tập -> lại ngay dưới nút "Xem ngay"
+        _syncWatchNowBtn();      // hiện lại nút "Xem ngay"
+        const dp = document.getElementById("detail-page");
+        if (dp) dp.scrollTop = 0;
+        window.scrollTo({ top: 0, behavior: "instant" });
+        return true;
+      }
+
       function toggleDpDesc() {
+        // Đang xem phim -> không mở rộng nội dung, bấm "Xem thêm" là nhảy về trang thông tin
+        if (_backToInfoFromPlayer()) return;
         const dpDescEl = document.getElementById("dp-desc");
         const dpDescToggle = document.getElementById("dp-desc-toggle");
         if (!dpDescEl || !dpDescToggle) return;
         const expanded = dpDescEl.classList.toggle("dp-desc-expanded");
         dpDescToggle.textContent = expanded ? "Thu gọn" : "Xem thêm";
+      }
+
+      // Mở/đóng ô "Thông tin phim" trên mobile (kiểu Chợ Phim)
+      function toggleDpInfo() {
+        const box = document.getElementById("dp-info-extra");
+        const btn = document.getElementById("dp-info-toggle");
+        if (!box || !btn) return;
+        const open = box.classList.toggle("open");
+        btn.classList.toggle("open", open);
+      }
+      // Đặt khối "Nội dung phim" đúng chỗ theo màn hình:
+      // desktop -> dưới poster (cột trái); mobile -> bên trong ô "Thông tin phim"
+      function _placeDpDesc() {
+        const block = document.getElementById("dp-desc-block");
+        const slot = document.getElementById("dp-desc-slot");
+        const col = document.getElementById("dp-poster-col");
+        if (!block || !slot || !col) return;
+        const mobile = window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+        const target = mobile ? slot : col;
+        if (block.parentElement !== target) target.appendChild(block);
+      }
+      window.addEventListener("resize", _placeDpDesc);
+
+      /* Khối Máy chủ + Danh sách tập:
+         - Đang xem THÔNG TIN -> đặt ngay DƯỚI nút "Xem ngay" (trong cột thông tin) để thấy đủ thông tin phim
+         - Đã bấm "Xem ngay" (khung phim mở) -> chuyển XUỐNG DƯỚI khung phim như cũ */
+      let _epHome = null, _epAnchor = null;
+      function _placeEpSection(down) {
+        const ep = document.getElementById("dp-ep-section");
+        if (!ep) return;
+        if (!_epHome) { _epHome = ep.parentElement; _epAnchor = ep.nextElementSibling; }
+        if (down) {
+          if (_epHome && ep.parentElement !== _epHome) {
+            _epHome.insertBefore(ep, _epAnchor && _epAnchor.parentElement === _epHome ? _epAnchor : null);
+          }
+        } else {
+          const info = document.querySelector(".dp-info");
+          if (info && ep.parentElement !== info) info.appendChild(ep);
+        }
       }
       function toggleHeroFav() {
         if (!requireLogin("Đăng nhập để thêm phim vào yêu thích")) return;
@@ -5898,7 +6323,7 @@
         const heroEl = document.getElementById("hero");
         const id = parseInt(heroEl.dataset.id);
         if (!id) return;
-        openPlayer(id);
+        openPlayer(id, true); // nút "Xem Ngay" ở hero -> mở trang phim và phát ngay
       }
 
       /* ===== 2 hàng thẻ mới: tuyển tập phim kinh dị + Top 10 phim bộ hôm nay ===== */
@@ -5929,31 +6354,32 @@
     </div>
     <div class="mc-body">
       <div class="mc-title">${escHtml(m.title)}</div>
-      ${m.partNumber ? `<div class="mc-sub">Phần ${m.partNumber}</div>` : ""}
       ${en ? `<div class="mc-title-en">${escHtml(en)}</div>` : ""}
     </div>
   </div>`;
       }
-      // Top 10 phim bộ "hôm nay": điểm đánh giá + nhiễu theo ngày nên mỗi ngày một khác
+      // Top 10 phim bộ: CHỈ phim phát hành trong 1 năm gần đây (năm >= 2026),
+      // xếp theo điểm IMDb (cao -> thấp); bằng điểm thì phim mới thêm đứng trước
       function renderTop10() {
         const row = document.getElementById("row-top10");
         if (!row) return;
-        const day = Math.floor(Date.now() / 864e5);
         const rate = (m) => {
           const n = parseFloat(String(m.rating || "").replace(",", "."));
           return isFinite(n) ? n : 0;
         };
-        const seed = (id) => {
-          let h = (Number(id) * 2654435761 + day * 40503) >>> 0;
-          h ^= h >>> 13; h = (h * 1274126177) >>> 0;
-          return h / 4294967295;
+        // Năm mới nhất của phim ("2015-2022" -> 2022); >= 2026 = trong vòng 1 năm
+        const lastYear = (m) => {
+          const ys = String(m.year || "").match(/\d{4}/g);
+          return ys ? Math.max.apply(null, ys.map(Number)) : 0;
         };
-        const list = MOVIES.filter(m => m.type === "series")
-          .map(m => ({ m: m, s: rate(m) + seed(m.id) * 1.6 }))
+        const list = MOVIES.filter(m => m.type === "series" && lastYear(m) >= 2026 && rate(m) > 0)
+          .map(m => ({ m: m, s: rate(m) }))
           .sort((a, b) => b.s - a.s)
           .slice(0, 10)
           .map(x => x.m);
-        row.innerHTML = list.map((m, i) => rankCardHTML(m, i + 1)).join("");
+        row.innerHTML = list.length
+          ? list.map((m, i) => rankCardHTML(m, i + 1)).join("")
+          : '<div style="color:var(--muted);padding:20px;font-size:13px;">Chưa có phim mới nào đủ điểm IMDb.</div>';
       }
 
       function renderRows() {
@@ -5981,6 +6407,8 @@
 
         // Các hàng chủ đề phim (Hành Động, Tình Cảm, Hài Hước, ...)
         renderGenreSections();
+        // Hàng chủ đề "Bạn đang quan tâm gì?" đầu trang
+        renderInterestTopics();
       }
 
       // Danh sách chủ đề hiện ở trang chủ: key = mã genre trong dữ liệu phim
@@ -6014,6 +6442,67 @@
         }).join("");
         // Hàng mới tạo -> gắn nút trượt trái/phải (hàm tự bỏ qua hàng đã gắn)
         if (typeof setupScrollArrows === "function") setupScrollArrows();
+      }
+
+      /* ===== "Bạn đang quan tâm gì?" — hàng thẻ chủ đề ở ĐẦU trang chủ (kiểu Chợ Phim) ===== */
+      // key = mã genre trong dữ liệu phim; icon + màu gradient cho từng thẻ
+      const INTEREST_TOPICS = [
+        { key: "romance",    icon: "💕", c1: "#831843", c2: "#db2777" },
+        { key: "action",     icon: "💥", c1: "#7f1d1d", c2: "#dc2626" },
+        { key: "comedy",     icon: "😂", c1: "#713f12", c2: "#eab308" },
+        { key: "costumes",   icon: "🏯", c1: "#7c2d12", c2: "#ea580c" },
+        { key: "anime",      icon: "🎌", c1: "#581c87", c2: "#9333ea" },
+        { key: "horror",     icon: "👻", c1: "#1e1b4b", c2: "#6d28d9" },
+        { key: "drama",      icon: "🎭", c1: "#0f766e", c2: "#0d9488" },
+        { key: "fantasy",    icon: "🐉", c1: "#064e3b", c2: "#059669" },
+        { key: "adventure",  icon: "🗺️", c1: "#0c4a6e", c2: "#0284c7" },
+        { key: "mystery",    icon: "🔍", c1: "#312e81", c2: "#6366f1" },
+        { key: "school",     icon: "📚", c1: "#14532d", c2: "#16a34a" },
+        { key: "scifi",      icon: "🚀", c1: "#1e3a8a", c2: "#4f46e5" },
+        { key: "family",     icon: "🏠", c1: "#78350f", c2: "#f59e0b" },
+        { key: "psychology", icon: "🧠", c1: "#134e4a", c2: "#14b8a6" },
+      ];
+      function renderInterestTopics() {
+        const row = document.getElementById("interest-row");
+        if (!row) return;
+        const hasGenre = (m, g) => (m.genre || "").split(",").map(x => x.trim().toLowerCase()).includes(g);
+        const all = INTEREST_TOPICS.map(t => {
+          const n = MOVIES.filter(m => hasGenre(m, t.key)).length;
+          if (!n) return ""; // chưa có phim thể loại này -> ẩn chủ đề
+          const name = GENRE_MAP[t.key] || t.key;
+          return `<div class="int-card" style="--g1:${t.c1};--g2:${t.c2};" onclick="filterByGenre('${t.key}')">
+            <span class="int-ic">${t.icon}</span>
+            <span class="int-tx"><span class="int-name">${name}</span><span class="int-go">${n} phim · Xem chủ đề</span></span>
+          </div>`;
+        }).filter(Boolean);
+        // Chỉ hiện 5 chủ đề đầu; phần còn lại mở ra bằng thẻ "Xem thêm chủ đề"
+        const expanded = row.dataset.expanded === "1";
+        const shown = expanded ? all : all.slice(0, 5);
+        const rest = all.length - shown.length;
+        let more = "";
+        if (!expanded && rest > 0) {
+          more = `<div class="int-card int-card-more" onclick="toggleInterestTopics()">
+            <span class="int-ic">＋</span>
+            <span class="int-tx"><span class="int-name">Xem thêm chủ đề</span><span class="int-go">${rest} chủ đề khác →</span></span>
+          </div>`;
+        } else if (expanded && all.length > 5) {
+          more = `<div class="int-card int-card-more" onclick="toggleInterestTopics()">
+            <span class="int-ic">↑</span>
+            <span class="int-tx"><span class="int-name">Thu gọn</span><span class="int-go">Ẩn bớt chủ đề</span></span>
+          </div>`;
+        }
+        row.classList.toggle("interest-wrap", expanded);
+        row.innerHTML = shown.join("") + more;
+        // Hàng mới tạo -> gắn nút trượt trái/phải
+        if (typeof setupScrollArrows === "function") setupScrollArrows();
+      }
+      // Mở rộng / thu gọn danh sách chủ đề ("Xem thêm chủ đề")
+      function toggleInterestTopics() {
+        const row = document.getElementById("interest-row");
+        if (!row) return;
+        row.dataset.expanded = row.dataset.expanded === "1" ? "" : "1";
+        renderInterestTopics();
+        if (row.dataset.expanded === "1") row.scrollIntoView({ block: "nearest", behavior: "smooth" });
       }
 
       // Render 1 hàng phim mới theo quốc gia trên trang chủ (dùng cho Phim Hàn/Trung/Âu Mỹ Mới).
@@ -6425,27 +6914,42 @@
 
       let _posterUrlTimer = null, _backdropUrlTimer = null;
 
-      function openPlayer(id) {
+      // autoPlay = true -> mở trang phim rồi phát ngay (nút "Xem Ngay" ở hero, "Xem tiếp").
+      // Mặc định (false) -> chỉ mở THÔNG TIN phim, khung xem phim hiện khi bấm "Xem ngay".
+      function openPlayer(id, autoPlay) {
         const m = MOVIES.find((x) => x.id === id);
         if (m && m._imgReady === false && !m._imgTried) {
-          fetchMovieImages([id]).then(function () { _patchCardImages(m); openPlayer(id); });
+          fetchMovieImages([id]).then(function () { _patchCardImages(m); openPlayer(id, autoPlay); });
           return;
         }
         if (m && m.type === "series" && (m._epLoaded !== true || !m._epT || Date.now() - m._epT > EP_TTL_MS)) {
-          if (m._epLoaded !== true) toast("⏳ Đang tải danh sách tập...");
           ensureEpisodes(m).then(() => {
             if (m._epLoaded === false) { toast("❌ Chưa tải được danh sách tập, vui lòng thử lại"); return; }
-            _openPlayerCore(id);
+            _openPlayerCore(id, autoPlay);
           });
           return;
         }
-        return _openPlayerCore(id);
+        return _openPlayerCore(id, autoPlay);
       }
-      function _openPlayerCore(id) {
+      function _openPlayerCore(id, autoPlay) {
         const m = MOVIES.find((x) => x.id === id);
         if (!m) return;
         // Lưu movieId hiện tại để tracking tiến trình
         _currentWatchMovieId = id;
+        // Trang phim mở phần THÔNG TIN trước: khung xem phim ẩn + bỏ nguồn đang chờ.
+        // Khung chỉ hiện khi bấm "Xem ngay" (watchNow) hoặc bấm 1 tập/server cụ thể.
+        window._pendingPlay = null;
+        {
+          const _pw = document.getElementById("dp-player-wrap");
+          if (_pw) {
+            _pw.style.display = "none";
+            const _if = document.getElementById("dp-player-iframe");
+            const _vd = document.getElementById("dp-player-video");
+            if (_if) _if.src = "";
+            if (_vd) { try { _vd.pause && _vd.pause(); } catch (_) {} _vd.removeAttribute("src"); _vd.style.display = "none"; }
+            if (typeof hlsInstance !== "undefined" && hlsInstance) { try { hlsInstance.destroy(); } catch (_) {} hlsInstance = null; }
+          }
+        }
         // Backdrop
         const backdropEl = document.getElementById("dp-backdrop-img");
         if (m.backdrop) {
@@ -6471,24 +6975,31 @@
         // Text info
         document.getElementById("dp-title").textContent = m.title;
         document.getElementById("dp-title-en").textContent = m.titleEn || "";
-        document.getElementById("dp-imdb").textContent = `IMDb ${m.rating}`;
+        const _imdb = document.getElementById("dp-imdb");
+        if (_imdb) {
+          const _rv = String(m.rating || "").trim();
+          _imdb.textContent = (_rv && _rv !== "N/A") ? `IMDb ${_rv}` : "IMDb N/A";
+          _imdb.style.display = "";
+        }
         document.getElementById("dp-year-badge").textContent = m.year;
         const dpDescEl = document.getElementById("dp-desc");
         dpDescEl.textContent = m.desc || "Chưa có mô tả.";
-        document.getElementById("dp-director").textContent =
-          CL(m.country) + " · " + GL(m.genre) + " · " + (m.sub || "Vietsub");
-        // Reset trạng thái mô tả (thu gọn) mỗi khi mở phim mới, rồi kiểm tra
-        // xem có bị cắt bớt (tràn 3 dòng) hay không để quyết định hiện nút "Xem thêm".
-        dpDescEl.classList.remove("dp-desc-expanded");
+        // Mobile: mở sẵn toàn bộ mô tả (không bắt buộc bấm "Xem thêm");
+        // desktop: thu gọn 3 dòng + nút "Xem thêm" (bấm -> chỉ kéo dài xuống, không nhảy).
+        const _mDesc = !!(window.matchMedia && window.matchMedia("(max-width: 640px)").matches);
+        dpDescEl.classList.toggle("dp-desc-expanded", _mDesc);
         const dpDescToggle = document.getElementById("dp-desc-toggle");
         if (dpDescToggle) {
           dpDescToggle.textContent = "Xem thêm";
           dpDescToggle.style.display = "none";
-          requestAnimationFrame(() => {
-            if (dpDescEl.scrollHeight > dpDescEl.clientHeight + 1) {
-              dpDescToggle.style.display = "inline-block";
-            }
-          });
+          // Check sau khi layout đã sẵn: lúc render trang còn ẩn -> scrollHeight/clientHeight = 0
+          // nên phải kiểm tra lại (rAF kép + timeout) rồi mới hiện nút "Xem thêm"
+          const _showIfClamped = () => {
+            if (_mDesc) return; // mobile: mở sẵn toàn bộ, không cần nút
+            if (dpDescEl.scrollHeight > dpDescEl.clientHeight + 1) dpDescToggle.style.display = "inline-block";
+          };
+          requestAnimationFrame(() => requestAnimationFrame(_showIfClamped));
+          setTimeout(_showIfClamped, 400);
         }
 
         // Server mặc định khi mở phim: SV3 > SV1 > M3U8 > SV2. Nếu đã xem dở thì quay lại ĐÚNG server đang xem (progress.srv).
@@ -6506,19 +7017,19 @@
           const _initialSrc = _movieSrcKind;
           if (m.m3u8Url) {
             const safeUrl = m.m3u8Url.replace(/'/g, "\\'");
-            sourcesHTML += `<button onclick="playSource('${safeUrl}','m3u8');setActiveServer(this)" style="${_initialSrc === "m3u8" ? "background:var(--accent);color:#000;font-weight:700;border:none;" : "background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:600;"}border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all 0.2s;" class="srv-btn">📡 Server M3U8</button>`;
+            sourcesHTML += `<button onclick="_selectMovieServer(this,'${safeUrl}','m3u8')" style="${_initialSrc === "m3u8" ? "background:var(--accent);color:#000;font-weight:700;border:none;" : "background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:600;"}border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all 0.2s;" class="srv-btn">📡 Server M3U8</button>`;
           }
           if (m.embedUrl) {
             const safeUrl = m.embedUrl.replace(/'/g, "\\'");
-            sourcesHTML += `<button onclick="playSource('${safeUrl}','embed');setActiveServer(this)" style="${_initialSrc === "embed" ? "background:var(--accent);color:#000;font-weight:700;border:none;" : "background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:600;"}border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all 0.2s;" class="srv-btn">🔗 Server 1</button>`;
+            sourcesHTML += `<button onclick="_selectMovieServer(this,'${safeUrl}','embed')" style="${_initialSrc === "embed" ? "background:var(--accent);color:#000;font-weight:700;border:none;" : "background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:600;"}border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all 0.2s;" class="srv-btn">🔗 Server 1</button>`;
           }
           if (m.embedUrl2) {
             const safeUrl2 = m.embedUrl2.replace(/'/g, "\\'");
-            sourcesHTML += `<button onclick="playSource('${safeUrl2}','embed');setActiveServer(this)" style="${_initialSrc === "embed2" ? "background:var(--accent);color:#000;font-weight:700;border:none;" : "background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:600;"}border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all 0.2s;" class="srv-btn">🔗 Server 2</button>`;
+            sourcesHTML += `<button onclick="_selectMovieServer(this,'${safeUrl2}','embed')" style="${_initialSrc === "embed2" ? "background:var(--accent);color:#000;font-weight:700;border:none;" : "background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:600;"}border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all 0.2s;" class="srv-btn">🔗 Server 2</button>`;
           }
           if (m.embedUrl3) {
             const safeUrl3 = m.embedUrl3.replace(/'/g, "\\'");
-            sourcesHTML += `<button onclick="playSource('${safeUrl3}','embed');setActiveServer(this)" style="${_initialSrc === "embed3" ? "background:var(--accent);color:#000;font-weight:700;border:none;" : "background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:600;"}border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all 0.2s;" class="srv-btn">🔗 Server 3</button>`;
+            sourcesHTML += `<button onclick="_selectMovieServer(this,'${safeUrl3}','embed')" style="${_initialSrc === "embed3" ? "background:var(--accent);color:#000;font-weight:700;border:none;" : "background:var(--card);border:1px solid var(--border);color:var(--text);font-weight:600;"}border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all 0.2s;" class="srv-btn">🔗 Server 3</button>`;
           }
           if (sourcesListInline) sourcesListInline.innerHTML = sourcesHTML;
           if (sourcesList) sourcesList.innerHTML = sourcesHTML;
@@ -6591,7 +7102,7 @@
           if (sourcesListInline2) sourcesListInline2.innerHTML = tabsHTML;
 
           // Danh sách tập M3U8
-          let m3u8TapsHTML = `<div id="ep-list-m3u8" style="display:${_initialTab === 'm3u8' ? 'flex' : 'none'};flex-wrap:wrap;gap:8px;">`;
+          let m3u8TapsHTML = `<div id="ep-list-m3u8" style="display:${_initialTab === 'm3u8' ? 'grid' : 'none'};gap:8px;">`;
           if (hasM3u8) {
             m3u8Episodes.forEach((ep, i) => {
               if (!ep || !ep.link) return;
@@ -6604,7 +7115,7 @@
           m3u8TapsHTML += `</div>`;
 
           // Danh sách tập Server 1 (Embed)
-          let embedTapsHTML = `<div id="ep-list-embed" style="display:${_initialTab === 'embed' ? 'flex' : 'none'};flex-wrap:wrap;gap:8px;">`;
+          let embedTapsHTML = `<div id="ep-list-embed" style="display:${_initialTab === 'embed' ? 'grid' : 'none'};gap:8px;">`;
           if (hasEmbed) {
             episodes.forEach((ep, i) => {
               if (!ep || !ep.link) return;
@@ -6617,7 +7128,7 @@
           embedTapsHTML += `</div>`;
 
           // Danh sách tập Server 2 (Embed dự phòng) — tab riêng biệt hoàn toàn
-          let embed2TapsHTML = `<div id="ep-list-embed2" style="display:${_initialTab === 'embed2' ? 'flex' : 'none'};flex-wrap:wrap;gap:8px;">`;
+          let embed2TapsHTML = `<div id="ep-list-embed2" style="display:${_initialTab === 'embed2' ? 'grid' : 'none'};gap:8px;">`;
           if (hasEmbed2) {
             episodes.forEach((ep, i) => {
               if (!ep || !ep.link2) return;
@@ -6630,7 +7141,7 @@
           embed2TapsHTML += `</div>`;
 
           // Danh sách tập Server 3 (Embed dự phòng)
-          let embed3TapsHTML = `<div id="ep-list-embed3" style="display:${_initialTab === 'embed3' ? 'flex' : 'none'};flex-wrap:wrap;gap:8px;">`;
+          let embed3TapsHTML = `<div id="ep-list-embed3" style="display:${_initialTab === 'embed3' ? 'grid' : 'none'};gap:8px;">`;
           if (hasEmbed3) {
             episodes.forEach((ep, i) => {
               if (!ep || !ep.link3) return;
@@ -6643,7 +7154,8 @@
           epContainer.innerHTML = m3u8TapsHTML + embedTapsHTML + embed2TapsHTML + embed3TapsHTML;
           setupEpLists(id); // cuộn trong khung + đánh dấu tập đã xem
 
-          // Tự động phát: ưu tiên tập đã xem dở, nếu chưa xem gì thì phát tập 1 của nguồn ưu tiên
+          // Chưa phát ngay: giữ nguồn của tập sẽ xem (ưu tiên tập đã xem dở) làm nguồn chờ
+          // cho nút "Xem ngay" — trang mở ra chỉ hiện thông tin phim trước.
           window._seriesCurrentEpIndex = 0;
           window._seriesEpisodes = episodes; // gán sớm để _detectSrvKind nhận đúng server khi tự phát
           {
@@ -6653,7 +7165,7 @@
             const _fld = { m3u8: "link", embed: "link", embed2: "link2", embed3: "link3" }[_pk];
             const _ep = (_pi >= 0 && _arr[_pi]) ? _arr[_pi] : null;
             if (_ep && _ep[_fld]) {
-              playSource(_ep[_fld], _pk === "m3u8" ? "m3u8" : "embed", _pi, _ep.name || ("Tập " + (_pi + 1)));
+              window._pendingPlay = { url: _ep[_fld], type: _pk === "m3u8" ? "m3u8" : "embed", epIndex: _pi, epName: _ep.name || ("Tập " + (_pi + 1)) };
               window._seriesCurrentEpIndex = _pi;
             }
           }
@@ -6673,15 +7185,17 @@
           const _mk = _movieSrcKind;
           const _mkType = _mk === "m3u8" ? "m3u8" : (_mk === "embed" ? (m.videoSource || "embed") : "embed");
           const _mkUrl = _mUrls[_mk] || "";
-          const playAction = _mkUrl ? `playSource('${_mkUrl.replace(/'/g, "\\'")}','${_mkType}')` : `void 0`;
-          epContainer.innerHTML = `<button onclick="${playAction}" style="background:var(--accent);color:#000;font-weight:700;border-radius:8px;padding:8px 22px;font-size:13px;cursor:pointer;border:none;">▶ Xem Phim</button>`;
+          // Phim lẻ: mỗi Server chỉ có 1 tập duy nhất = "Full".
+          // Bấm vào là phát nguồn của Server đang chọn (watchNow tôn trọng _pendingPlay,
+          // _selectMovieServer đã cập nhật khi bấm Server) — không còn nút "▶ Xem Phim" riêng.
+          epContainer.innerHTML = `<button class="ep-tab-btn ep-active" onclick="watchNow()" style="background:var(--accent);color:#000;font-weight:700;border:none;border-radius:8px;padding:8px 22px;font-size:13px;cursor:pointer;transition:all 0.2s;">▶ Full</button>`;
           statusEl.innerHTML = "✅ Hoàn chỉnh · Full HD";
           statusEl.style.display = "inline-flex";
 
-          // Tự động phát ngay khi mở trang: ưu tiên SV3 > SV1 > M3U8 > SV2 (hoặc đúng server đang xem dở).
-          // Trước đây không có fallback SV2 nên phim CHỈ có SV2 (chưa có ở
-          // NguonC, chỉ có ở KKPhim) sẽ không tự phát, phải tự bấm chọn nguồn.
-          if (_mkUrl) playSource(_mkUrl, _mkType);
+          // Chưa phát ngay: ưu tiên SV3 > SV1 > M3U8 > SV2 (hoặc đúng server đang xem dở)
+          // làm nguồn chờ cho nút "Xem ngay". Trước đây không có fallback SV2 nên phim
+          // CHỈ có SV2 (chưa có ở NguonC, chỉ có ở KKPhim) sẽ không có nguồn chờ.
+          if (_mkUrl) window._pendingPlay = { url: _mkUrl, type: _mkType };
         }
 
         // Cast (random placeholder cast based on country)
@@ -6757,13 +7271,201 @@
           )
           .join("");
 
-        // Genre tags
-        const genreTagsEl = document.getElementById("dp-genre-tags");
-        if (genreTagsEl) {
-          const genres = (m.genre || "").split(",").map(g => g.trim()).filter(Boolean);
-          genreTagsEl.innerHTML = genres.map(g =>
-            `<span style="background:rgba(255,255,255,0.1);color:var(--text);font-size:12px;padding:4px 12px;border-radius:20px;border:1px solid rgba(255,255,255,0.15);">${GENRE_MAP[g] || g}</span>`
-          ).join("");
+        // Badge phụ (chất lượng, phụ đề) + bảng thông tin chi tiết
+        const _qEl = document.getElementById("dp-quality");
+        if (_qEl) { _qEl.textContent = m.quality || ""; _qEl.style.display = m.quality ? "" : "none"; }
+        const _sbEl = document.getElementById("dp-sub-badge");
+        if (_sbEl) { _sbEl.textContent = m.sub || "Vietsub"; }
+        _fillDpMeta(m);
+        // Đặt lại khối mô tả theo màn hình + mở sẵn ô "Thông tin phim" trên mobile
+        // (không bắt buộc bấm) — desktop: bảng info hiện trực tiếp nên giữ đóng như cũ
+        _placeDpDesc();
+        _placeEpSection(false); // SV + danh sách tập -> dưới nút "Xem ngay"
+        const _iex = document.getElementById("dp-info-extra");
+        const _itg = document.getElementById("dp-info-toggle");
+        const _mInfo = !!(window.matchMedia && window.matchMedia("(max-width: 640px)").matches);
+        if (_iex) _iex.classList.toggle("open", _mInfo);
+        if (_itg) _itg.classList.toggle("open", _mInfo);
+        // Thời lượng (mỗi phim một số phút khác nhau) — cột duration KHÔNG có trong bảng movies,
+        // extra.duration đang để trống -> tự tra theo thứ tự:
+        //   1) extra.duration admin nhập tay ở trang quản lí
+        //   2) API nguồn phim theo slug (field time: "102 phút" / "62 phút/tập")
+        //   3) OMDb Runtime theo imdbId (kèm cả imdbId lấy được từ nguồn)
+        //   4) TMDB (search theo tên + năm -> runtime / episode_run_time)
+        //   5) Wikidata (P2047 runtime theo imdbId)
+        // Kết quả ghi localStorage -> mở lại phim là hiện ngay, không gọi API lần 2.
+        if (m._metaLoaded === undefined) {
+          m._metaLoaded = false;
+          const _refresh = () => {
+            if (_currentWatchMovieId === id && document.getElementById("detail-page").style.display === "block") _fillDpMeta(m);
+          };
+          const _ck = (k) => { try { return localStorage.getItem("nhotphim_rt_" + k); } catch (_) { return null; } };
+          const _cs = (k, v) => { try { localStorage.setItem("nhotphim_rt_" + k, String(v)); } catch (_) {} };
+          const _valid = (n) => (n >= 5 && n <= 600); // loại giá trị rác ("1 min", "0")
+          const _num = (s) => { const n = parseInt(String(s == null ? "" : s).replace(",", "."), 10); return _valid(n) ? n : 0; };
+          const _done = (mins) => { m.duration = mins > 0 ? mins : null; m._metaLoaded = true; _refresh(); };
+
+          let _imdb = null; // imdbId đã biết (extra / nguồn phim / TMDB) -> dùng cho Wikidata
+
+          const _omdb = (imdbId) => {
+            if (imdbId) _imdb = imdbId;
+            const iid = imdbId || _imdb;
+            if (!iid) { _tmdb(); return; }
+            const c = _ck("imdb_" + iid);
+            if (c !== null) {
+              const v = parseFloat(c);
+              if (v > 0) { _done(v); return; }
+              _tmdb(); return;
+            }
+            fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(iid)}&apikey=trilogy`)
+              .then(r2 => (r2.ok ? r2.json() : null))
+              .then(j => {
+                const rt = j && j.Runtime && j.Runtime !== "N/A" ? parseInt(j.Runtime, 10) : 0;
+                const mins = _valid(rt) ? rt : 0;
+                _cs("imdb_" + iid, mins);
+                if (mins > 0) { _done(mins); return; }
+                _tmdb(); // OMDb không có -> TMDB
+              })
+              .catch(() => _tmdb());
+          };
+
+          const _source = (slugs, imdbHint) => {
+            // Thử lần lượt các slug (extra.slug có thể 404 trong khi ophim_slug vẫn có),
+            // hết slug mới chuyển sang OMDb bằng imdbId lấy được từ nguồn hoặc từ extra.
+            const list = (slugs || []).filter(Boolean).filter((s, i, a) => a.indexOf(s) === i);
+            const _next = (i) => {
+              if (i >= list.length) { _omdb(imdbHint || null); return; }
+              const slug = list[i];
+              const c = _ck("src_" + slug);
+              if (c !== null) {
+                const v = parseFloat(c);
+                if (v > 0) { _done(v); return; }
+                const im = _ck("src_imdb_" + slug);
+                if (im) { _omdb(im); return; }
+                _next(i + 1);
+                return;
+              }
+              fetch(`https://phimapi.com/v1/api/phim/${encodeURIComponent(slug)}?limit=1`)
+                .then(rs => (rs.ok ? rs.json() : null))
+                .then(js => {
+                  const it = js && js.data && js.data.item;
+                  const mins = it ? _num(it.time) : 0;
+                  _cs("src_" + slug, mins);
+                  const srcImdb = it && it.imdb && it.imdb.id;
+                  if (srcImdb) _cs("src_imdb_" + slug, srcImdb);
+                  if (mins > 0) { _done(mins); return; }
+                  if (srcImdb) { _omdb(srcImdb); return; }
+                  _next(i + 1);
+                })
+                .catch(() => _next(i + 1));
+            };
+            if (!list.length) { _omdb(imdbHint || null); return; }
+            _next(0);
+          };
+
+          // ===== TMDB: search theo tên -> runtime (phim lẻ) / episode_run_time (phim bộ) =====
+          const _tmdb = () => {
+            const K = "b5d6a95cbd8ed273d9d31c5d0ee2dedb";
+            const kind = m.type === "movie" ? "movie" : "tv";
+            const base = String(m.title || "").trim();
+            // biến thể tên: bỏ "(Phần 3)", cắt trước ":", cả hai, rồi tên gốc
+            const variants = [
+              base.replace(/\s*\(.*?\)\s*/g, " ").trim(),
+              base.split(":")[0].trim(),
+              base.replace(/\s*\(.*?\)\s*/g, " ").split(":")[0].trim(),
+              base
+            ].filter((v, i, a) => v && a.indexOf(v) === i);
+            const _get = (u, n) => fetch(u).then(rs => {
+              if (rs.status === 429 && (n || 0) < 3) return new Promise(r2 => setTimeout(r2, 1200)).then(() => _get(u, (n || 0) + 1)); // chờ rate limit (tối đa 3 lần)
+              return rs.ok ? rs.json() : null;
+            });
+            const _detail = (tid, onMiss) => {
+              const ck = _ck("tmdb_" + tid);
+              if (ck !== null) {
+                const v = parseFloat(ck);
+                if (v > 0) { _done(v); return; }
+                onMiss(); return;
+              }
+              _get(`https://api.themoviedb.org/3/${kind}/${tid}?api_key=${K}`)
+                .then(d => {
+                  const imdb = (d && d.imdb_id) || (d && d.external_ids && d.external_ids.imdb_id);
+                  if (imdb) _imdb = imdb; // TMDB cho cả IMDb id -> Wikidata dùng được
+                  let mins = 0;
+                  if (kind === "movie") mins = (d && d.runtime) || 0;
+                  else { const erc = d && d.episode_run_time; if (erc && erc.length) mins = erc[0] || 0; }
+                  if (mins > 0 && _valid(mins)) { _cs("tmdb_" + tid, mins); _done(mins); return; }
+                  if (kind === "movie") { _cs("tmdb_" + tid, 0); onMiss(); return; }
+                  // phim bộ chưa có episode_run_time -> thử runtime tập 1
+                  _get(`https://api.themoviedb.org/3/tv/${tid}/season/1/episode/1?api_key=${K}`)
+                    .then(ep => {
+                      const rt2 = (ep && ep.runtime) || 0;
+                      const ok2 = _valid(rt2) ? rt2 : 0;
+                      _cs("tmdb_" + tid, ok2);
+                      if (ok2 > 0) _done(ok2); else onMiss();
+                    })
+                    .catch(() => onMiss());
+                })
+                .catch(() => onMiss());
+            };
+            const qkey = "tmdbq_" + kind + "_" + (variants[0] || base).toLowerCase();
+            const cached = _ck(qkey);
+            if (cached !== null) {
+              const tid = parseFloat(cached);
+              if (tid > 0) { _detail(tid, () => _wikidata()); return; }
+              _wikidata(); return; // đã thử mà không có -> sang Wikidata
+            }
+            // thứ tự thử: biến thể tên x vi-VN/en-US x có năm (nếu có) / không năm
+            const tries = [];
+            variants.forEach(v => ["vi-VN", "en-US"].forEach(lang => {
+              if (m.year) tries.push({ v, lang, y: true });
+              tries.push({ v, lang, y: false });
+            }));
+            let i = 0;
+            const next = () => {
+              if (i >= tries.length) { _cs(qkey, 0); _wikidata(); return; }
+              const t = tries[i++];
+              const url = `https://api.themoviedb.org/3/search/${kind}?api_key=${K}&language=${t.lang}&query=${encodeURIComponent(t.v)}` + (t.y && m.year ? `&year=${encodeURIComponent(m.year)}` : "");
+              _get(url)
+                .then(s => {
+                  const first = s && s.results && s.results[0];
+                  if (!first) { next(); return; }
+                  _detail(first.id, next);
+                })
+                .catch(() => next());
+            };
+            next();
+          };
+
+          // ===== Wikidata: thời lượng P2047 theo IMDb id P345 (miễn phí, không cần khóa) =====
+          const _wikidata = () => {
+            const iid = _imdb;
+            if (!iid) { _done(0); return; }
+            const ck = _ck("wd_" + iid);
+            if (ck !== null) { _done(parseFloat(ck) || 0); return; }
+            const sparql = 'SELECT ?rt WHERE { ?item wdt:P345 "' + iid + '". OPTIONAL { ?item wdt:P2047 ?rt. } } LIMIT 5';
+            fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql), { headers: { Accept: 'application/sparql-results+json' } })
+              .then(rs => (rs.ok ? rs.json() : null))
+              .then(j => {
+                const b = j && j.results && j.results.bindings;
+                const vals = b ? b.map(x => x.rt && parseFloat(x.rt.value)).filter(v => _valid(v)) : [];
+                const mins = vals.length ? vals[0] : 0;
+                _cs("wd_" + iid, mins);
+                _done(mins);
+              })
+              .catch(() => _done(0));
+          };
+
+          sbFetch(`${SB_URL}/rest/v1/${SB_TABLE}?id=eq.${id}&select=extra`, { headers: SB_HEADERS })
+            .then(r => (r.ok ? r.json() : null))
+            .then(rows => {
+              const row = rows && rows[0];
+              const e = row && row.extra;
+              const eo = (e && typeof e === "object") ? e : null;
+              const own = eo && eo.duration ? _num(eo.duration) : 0;
+              if (own > 0) { _done(own); return; }
+              _source([eo && eo.slug, m.ophimSlug], (eo && eo.imdbId) || null);
+            })
+            .catch(() => { m._metaLoaded = true; });
         }
 
         // ===== SERIES PARTS (nhiều phần) =====
@@ -6832,6 +7534,63 @@
           if (!nameEl.value.trim()) nameEl.value = getUserDisplayName();
           updateCmtAvatar();
         }
+        // autoPlay (nút "Xem Ngay" ở hero, "Xem tiếp") -> phát ngay;
+        // ngược lại đứng ở chế độ XEM THÔNG TIN, khung phim chỉ hiện khi bấm "Xem ngay".
+        if (autoPlay && window._pendingPlay && window._pendingPlay.url) watchNow();
+        _syncWatchNowBtn();
+      }
+
+      // Bảng thông tin chi tiết trên trang phim (kiểu Chợ Phim)
+      function _fillDpMeta(m) {
+        const set = (id, v) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = (v === null || v === undefined || v === "" ? "—" : v);
+        };
+        const isSeries = m.type === "series";
+        let status;
+        if (isSeries) {
+          const eps = (m.episodes || []).length, m3 = (m.m3u8Episodes || []).length;
+          const cur = m.currentEp || Math.max(eps, m3) || 1;
+          const tot = m.totalEp || Math.max(eps, m3) || cur;
+          const st = m.epStatus || "Đang chiếu";
+          const ok = tot > cur || st === "Hoàn thành"; // tổng <= số hiện tại -> không hiện x/x lừa mắt
+          status = `${st} (${cur}${ok ? "/" + tot : ""})`;
+        } else {
+          status = "Hoàn chỉnh · Full";
+        }
+        set("dp-m-status", status);
+        set("dp-m-year", m.year || "");
+        set("dp-m-genre", GL(m.genre));
+        set("dp-m-type", isSeries ? "Phim Bộ" : "Phim Lẻ");
+        const dur = parseFloat(m.duration);
+        const durRow = document.getElementById("dp-m-dur-row");
+        // Ô Thời lượng LUÔN hiện trong bảng "Thông tin phim" (phim bộ = thời lượng 1 tập);
+        // chưa tra được dữ liệu thì hiển thị "—" thay vì ẩn cả dòng.
+        if (durRow) durRow.style.display = "";
+        set("dp-m-dur", dur > 0 ? (isSeries ? dur + " phút/tập" : dur + " phút") : "—");
+        set("dp-m-country", CL(m.country));
+      }
+
+      // Nút "Xem ngay": chỉ hiện khi trang đang ở chế độ XEM THÔNG TIN
+      // (khung phim chưa mở) và đã có nguồn chờ. Khung phim mở -> nút tự ẩn.
+      function _syncWatchNowBtn() {
+        const wn = document.getElementById("dp-watch-now");
+        if (!wn) return;
+        const playing = document.getElementById("dp-player-wrap").style.display === "block";
+        wn.style.display = (!playing && window._pendingPlay && window._pendingPlay.url) ? "" : "none";
+      }
+
+      // Bấm "Xem ngay" -> hiện khung xem phim rồi phát nguồn đã chờ sẵn
+      function watchNow() {
+        const p = window._pendingPlay;
+        if (!p || !p.url) { toast("Chưa có nguồn video!"); return; }
+        playSource(p.url, p.type, p.epIndex, p.epName);
+      }
+
+      // Nút "Bình luận" -> cuộn tới ô bình luận
+      function scrollToComments() {
+        const el = document.getElementById("comment-section");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
       function togglePartsDropdown() {
@@ -6875,7 +7634,7 @@
               tabs[t].style.background = "var(--card)"; tabs[t].style.color = "var(--text)"; tabs[t].style.border = "1px solid var(--border)"; tabs[t].style.fontWeight = "600";
             }
           }
-          if (lists[t]) lists[t].style.display = (t === type) ? "flex" : "none";
+          if (lists[t]) lists[t].style.display = (t === type) ? "grid" : "none";
         });
         _restoreEpScroll(); // trả lại vị trí cuộn của server vừa chuyển tới
 
@@ -6885,8 +7644,17 @@
 
         function playAndHighlight(list, sourceType, url, epName, idx) {
           if (!url) return;
-          playSource(url, sourceType, idx, epName);
           window._seriesCurrentEpIndex = idx;
+          const playing = document.getElementById("dp-player-wrap").style.display === "block";
+          if (playing) {
+            // Đang xem -> chuyển server ngay, giữ đúng tập đang xem
+            playSource(url, sourceType, idx, epName);
+          } else {
+            // Đang ở tab thông tin: chỉ đổi danh sách tập, KHÔNG hiện khung phim.
+            // Tập của server mới được giữ làm nguồn chờ cho nút "Xem ngay".
+            window._pendingPlay = { url: url, type: sourceType === "m3u8" ? "m3u8" : "embed", epIndex: idx, epName: epName };
+            _syncWatchNowBtn();
+          }
           if (list) {
             list.querySelectorAll(".ep-tab-btn").forEach(b => {
               b.classList.remove("ep-active");
@@ -6984,6 +7752,21 @@
         btn.style.background = "var(--accent)";
         btn.style.color = "#000";
         btn.style.borderColor = "var(--accent)";
+      }
+
+      // Phim lẻ: chọn server KHÔNG tự mở khung phim khi đang ở tab thông tin —
+      // chỉ làm nút server sáng lên + cập nguồn chờ cho "Xem ngay".
+      // Đang xem (khung phim đang mở) thì chuyển nguồn ngay như trước.
+      function _selectMovieServer(btn, url, type) {
+        setActiveServer(btn);
+        if (!url) return;
+        // Luôn cập nhật nguồn chờ: đang xem -> chuyển ngay ; chưa xem -> giữ cho nút "Xem ngay"/"▶ Full"
+        // (trước đây nhánh đang xem không ghi _pendingPlay -> thoát về trang thông tin rồi bấm
+        //  "Xem ngay"/"▶ Full" là phát lại server CŨ thay vì server vừa bấm)
+        window._pendingPlay = { url: url, type: type };
+        const playing = document.getElementById("dp-player-wrap").style.display === "block";
+        if (playing) { playSource(url, type); return; }
+        _syncWatchNowBtn();
       }
 
       /* ===== ĐÁNH DẤU TẬP ĐÃ XEM + CUỘN DANH SÁCH TẬP + PHÍM TẮT ===== */
@@ -7349,8 +8132,8 @@
       // Mở phim + tự nhảy đúng tập + đúng phút
       function openPlayerContinue(movieId) {
         const prog = getWatchProgress(movieId);
-        // Mở detail page — openPlayer() đã tự động phát đúng tập đang xem dở (nếu có)
-        openPlayer(movieId);
+        // Mở detail page rồi phát ngay đúng tập đang xem dở (nút "Xem tiếp" = muốn xem luôn)
+        openPlayer(movieId, true);
         if (!prog) return;
         // Khôi phục đúng giây đã dừng (chỉ áp dụng cho m3u8, video thật)
         setTimeout(() => restoreProgressIfAny(movieId), 800);
@@ -7499,11 +8282,15 @@
         }
 
         wrap.style.display = "block";
+        _placeEpSection(true); // đã vào khung phim -> SV + tập chuyển xuống dưới khung phim
+        _syncWatchNowBtn(); // khung phim đã mở -> nút "Xem ngay" tự ẩn
         wrap.scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
       function closeDetail() {
         clearTimeout(_embedWatchTimer);
+        window._pendingPlay = null; // đóng trang -> bỏ nguồn chờ
+        _placeEpSection(true); // về vị trí gốc (dưới khung phim)
         document.getElementById("detail-page").style.display = "none";
         // Mở khóa scroll body và restore vị trí cũ (iOS-safe)
         document.body.style.overflow = "";
@@ -7728,6 +8515,8 @@
       }
       // Ẩn loading screen (bản cũ)
       function hideLoadingScreen() {
+        // F5 ở trang xem phim: đang giữ màn tải -> chờ __npRelease() sau khi phim mở xong
+        if (window.__npHold) return;
         const ls = document.getElementById("loading-screen");
         if (ls) {
           ls.style.pointerEvents = "none";
@@ -7741,6 +8530,11 @@
           }, 700);
         }
       }
+      // router.js gọi hàm này khi trang phim đã hiện ra (hoặc không mở được -> về trang chủ)
+      window.__npRelease = function () {
+        window.__npHold = false;
+        hideLoadingScreen();
+      };
 
       /* ===== BẢN LƯU DANH SÁCH PHIM (IndexedDB: không bị giới hạn ~5MB như localStorage) =====
          Trước đây bản lưu nằm trong localStorage và bị BỎ nếu > 3,5MB (vd. có ảnh base64) nên
@@ -7800,8 +8594,8 @@
       function _saveHeroPre() {
         try {
           const m = heroMs[0]; if (!m) return;
-          const d = _heroBgUrl(m), p = m.poster || m.backdrop || "";
-          if (/^https?:/.test(d) && /^https?:/.test(p)) localStorage.setItem("np_hero_pre_v1", JSON.stringify({ d: d, m: p }));
+          const d = _heroBgUrl(m), p = _fastImg(m.poster || m.backdrop || "", 1000, 80), l = _fastImg(m.logo || "", 768, 85);
+          if (/^https?:/.test(d) && /^https?:/.test(p)) localStorage.setItem("np_hero_pre_v1", JSON.stringify({ d: d, m: p, l: /^https?:/.test(l) ? l : "" }));
           else localStorage.removeItem("np_hero_pre_v1");
         } catch (e) {}
       }
@@ -7847,9 +8641,13 @@
         return [];
       }
       function _patchCardImages(m) {
-        const src = m.backdrop || m.poster || "";
-        if (!src) return;
+        const srcBd = m.backdrop || m.poster || "";
+        const srcP = m.poster || m.backdrop || "";
+        if (!srcBd && !srcP) return;
         document.querySelectorAll('img[data-mid="' + m.id + '"]').forEach(function (img) {
+          // Thẻ Top 10 / pick-media là ảnh dọc 2:3 -> ưu tiên POSTER; các thẻ lưới 16:9 thì dùng backdrop
+          const inPick = !!(img.closest && img.closest(".pick-media"));
+          const src = inPick ? (srcP || srcBd) : (srcBd || srcP);
           if (img.getAttribute("src") !== src) { img.style.display = ""; img.src = src; }
           const ph = img.nextElementSibling;
           if (ph && ph.classList && ph.classList.contains("mc-poster-ph")) ph.style.display = "none";

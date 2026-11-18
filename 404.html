@@ -34,7 +34,7 @@
       (function () {
         // Giữ nguyên đường dẫn phim khi chuyển sang dạng # (router.js sẽ chuyển lại URL thật)
         var p = (location.pathname || "/") + (location.search || "");
-        var isRoute = /^\/(phim|duyet-tim|tim-kiem|tai-khoan|yeu-thich|danh-sach|xem-tiep)(\/|\?|$)/.test(p);
+        var isRoute = /^\/(phim|xem-phim|duyet-tim|tim-kiem|tai-khoan|yeu-thich|danh-sach|xem-tiep)(\/|\?|$)/.test(p);
         location.replace(isRoute ? "/#" + p : "/");
       })();
     </script>
